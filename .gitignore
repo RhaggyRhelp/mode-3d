@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments & Packages
+.venv/
+venv/
+ENV/
+env/
+dist/
+build/
+*.egg-info/
+
+# Logs and temporary runtime files
+*.log
+*.pid
+moge_daemon.log
+moge_daemon.pid
+
+# Blender temporary files
+*.blend1
+*.blend2
+*.blend@
+*.swp
+*.swo
+
+# Blender Extension zip builds
+*.zip
+blender_extension/*.zip
+
+# Test outputs and caches
+output_mesh_test/
+tests/output_mesh_test/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration / IDEs
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db

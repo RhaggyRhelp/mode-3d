@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moge-splat-studio"
+version = "2.1.0"
+description = "Warm-daemon metric point-splats and 2.5D compositor relighter for Blender"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "MoGe Splat Studio Contributors" }
+]
+keywords = ["blender", "moge", "depth", "pointcloud", "3d-reconstruction", "computer-vision"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "python-multipart>=0.0.6",
+    "numpy>=1.24.0",
+    "opencv-python>=4.8.0",
+    "pillow>=9.0.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

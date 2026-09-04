@@ -1,0 +1,18 @@
+# Core Daemon & Processing Dependencies
+fastapi>=0.100.0
+uvicorn>=0.22.0
+python-multipart>=0.0.6
+numpy>=1.24.0
+opencv-python>=4.8.0
+pillow>=9.0.0
+
+# PyTorch (Install with appropriate CUDA variant from pytorch.org if not present)
+torch>=2.1.0
+torchvision>=0.16.0
+
+# MoGe Upstream Dependencies
+flex-gemm
+utils3d
+
+# Testing
+pytest>=7.0.0

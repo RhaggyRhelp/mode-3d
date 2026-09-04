@@ -1,14 +1,16 @@
 """Render comparison of Isotropic Point Spheres vs Oriented Gaussian Surfel Discs in Blender 5.2."""
 import sys
 from pathlib import Path
-sys.path.insert(0, r"E:\MOGE")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import bpy
 import math
 import numpy as np
 from tests.test_surfel_splats import create_gaussian_material, create_surfel_node_group
 
-out_dir = Path(r"E:\MOGE\tests\output_mesh_test")
+out_dir = Path(__file__).resolve().parent / "output_mesh_test"
 npz_path = out_dir / "01_HouseIndoor.npz"
 
 data = np.load(npz_path)

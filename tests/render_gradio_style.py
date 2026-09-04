@@ -1,14 +1,16 @@
 """Test unlit / emissive point shading (exact replica of Gradio Three.js viewer)."""
 import sys
 from pathlib import Path
-sys.path.insert(0, r"E:\MOGE")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import bpy
 import math
 import numpy as np
 from tests.render_surfel_comparison import build_splat_mesh, setup_render_scene
 
-out_dir = Path(r"E:\MOGE\tests\output_mesh_test")
+out_dir = Path(__file__).resolve().parent / "output_mesh_test"
 
 bpy.ops.wm.read_factory_settings(use_empty=False)
 bpy.data.objects.remove(bpy.data.objects['Cube'], do_unlink=True)

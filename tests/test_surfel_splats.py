@@ -4,7 +4,7 @@ import math
 import numpy as np
 from pathlib import Path
 
-out_dir = Path(r"E:\MOGE\tests\output_mesh_test")
+out_dir = Path(__file__).resolve().parent / "output_mesh_test"
 
 def create_gaussian_material():
     mat = bpy.data.materials.get("M_MoGe_Gaussian_Splat")

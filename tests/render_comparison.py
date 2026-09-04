@@ -4,7 +4,7 @@ import math
 import sys
 from pathlib import Path
 
-out_dir = Path(r"E:\MOGE\tests\output_mesh_test")
+out_dir = Path(__file__).resolve().parent / "output_mesh_test"
 raw_path = out_dir / "01_baseline_raw.obj"
 clean_path = out_dir / "04_planar_decimated.obj"
 

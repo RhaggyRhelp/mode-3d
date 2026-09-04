@@ -75,6 +75,33 @@ def _load_native_rgb(path: str):
             pass
 
 
+def _save_rgb_to_png(arr_rgb: np.ndarray, path: Path):
+    """Save RGB uint8 array to PNG using PIL if available, else native Blender images."""
+    try:
+        from PIL import Image as PILImage
+        PILImage.fromarray(arr_rgb).save(path)
+        return
+    except Exception:
+        pass
+
+    h, w = arr_rgb.shape[:2]
+    img = bpy.data.images.new("temp_export", width=w, height=h, alpha=False, float_buffer=False)
+    try:
+        rgba = np.empty((h, w, 4), dtype=np.float32)
+        rgba[..., :3] = arr_rgb.astype(np.float32) / 255.0
+        rgba[..., 3] = 1.0
+        rgba = rgba[::-1, :, :]  # Bottom-to-top orientation for Blender
+        img.pixels.foreach_set(rgba.ravel())
+        img.filepath_raw = str(path)
+        img.file_format = 'PNG'
+        img.save()
+    finally:
+        try:
+            bpy.data.images.remove(img)
+        except Exception:
+            pass
+
+
 class MOGE_OT_ensure_daemon(Operator):
     bl_idname = "moge_splat.ensure_daemon"
     bl_label = "Check AI Engine"
@@ -252,12 +279,11 @@ class MOGE_OT_scan_splat_daemon(Operator):
         # --- Self-Cleaning: Wipe previous temporary scan files ---
         cache_dir = prepare_new_scan_cache()
         try:
-            from PIL import Image as PILImage
-            PILImage.fromarray(img_rgb).save(cache_dir / "image.png")
+            _save_rgb_to_png(img_rgb, cache_dir / "image.png")
             nvis = ((np.clip(normal, -1, 1) * 0.5 + 0.5) * 255.0).astype(np.uint8)
-            PILImage.fromarray(nvis).save(cache_dir / "normal.png")
-        except Exception:
-            pass
+            _save_rgb_to_png(nvis, cache_dir / "normal.png")
+        except Exception as e:
+            print(f"[MoGe] Warning saving preview images: {e}")
 
         try:
             (cache_dir / "response.npz").write_bytes(payload)
@@ -416,7 +442,7 @@ class MOGE_OT_setup_compositor_relight(Operator):
         ok, msg = setup_compositor_relighter(context, img_file, norm_file)
         if ok:
             # Switch to compositing workspace if present
-            if "Compositing" in bpy.data.workspaces:
+            if "Compositing" in bpy.data.workspaces and getattr(context, "window", None):
                 context.window.workspace = bpy.data.workspaces["Compositing"]
             self.report({'INFO'}, msg)
             return {'FINISHED'}

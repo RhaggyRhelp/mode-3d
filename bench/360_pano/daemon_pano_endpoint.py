@@ -15,7 +15,7 @@ async def pano(
     """Full-room scan: equirect -> tangent faces @forced 90deg -> loop-closed
     scale solve -> merged cloud in pano frame (face0 identity) + camera rig.
     Returns pano.npz with FLAT arrays (points/colors/normals/depths/face_id)."""
-    from shared.pano import (extract_face, tangent_frame, boundary_columns,
+    from shared_pano import (extract_face, tangent_frame, boundary_columns,
                              pole_wedge_mask, solve_scales,
                              apply_face_transform, side_wedge_mask, pole_cap_mask)
     from shared.zoom import rotate_normals
@@ -81,7 +81,7 @@ async def pano(
         # so unpaired medians compare different things. Paired samples on
         # shared rays + trimmed joint (scale, shift) fit both sides at once.
         # Poles stay scale-only (rings are unpaired by nature) fit to fixed sides.
-        from shared.pano import solve_affine
+        from shared_pano import solve_affine
         from shared.tta import depth_to_points
         fh, fw = faces[0]["depth"].shape
         ci, cj = boundary_columns(n_yaw, side_fov, fw)
@@ -107,7 +107,7 @@ async def pano(
             pre_res.append(float(np.median(np.abs(a[ok] - b[ok]) / np.maximum(a[ok], 1e-3))))
         # scalar anchor first (median ratios; absolute level lives here), then
         # anchored affine for boundary agreement (shifts absorb offsets).
-        from shared.pano import solve_scales
+        from shared_pano import solve_scales
         # Reciprocal depth ratio: larger predicted depth requires smaller scale (s_i / s_j = d_j / d_i)
         _terms = [(i, j, float(np.log(max(np.median(b), 1e-9) / max(np.median(a), 1e-9))), 1.0)
                   for i, j, a, b in pairs]

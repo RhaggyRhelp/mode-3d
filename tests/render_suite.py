@@ -3,7 +3,7 @@ import bpy
 import math
 from pathlib import Path
 
-out_dir = Path(r"E:\MOGE\tests\output_mesh_test")
+out_dir = Path(__file__).resolve().parent / "output_mesh_test"
 
 def render_scene(obj_path, out_png, show_wireframe=False):
     bpy.ops.wm.read_factory_settings(use_empty=False)

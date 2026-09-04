@@ -81,7 +81,7 @@ def main():
             elif item.is_file():
                 shutil.copy2(item, target)
         print(f"[STAGE] Successfully staged to: {stage}")
-        print("        Restart Blender or Reload Scripts, then enable 'MoGe Splat Studio'.")
+        print("        Restart Blender or Reload Scripts, then enable 'MoDe 3D Studio'.")
     else:
         print("[INFO] Blender extensions directory not automatically detected.")
         print(f"       Install manually in Blender via Edit > Preferences > Extensions > Install from Disk: {OUT_ZIP}")

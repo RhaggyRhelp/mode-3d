@@ -121,8 +121,8 @@ def _find_daemon_script() -> Path:
         if cand_sub.exists():
             return cand_sub
 
-    # Sibling checkouts
-    for cand in [Path("E:/MOGE/daemon/moge_daemon.py"), Path.cwd() / "daemon" / "moge_daemon.py"]:
+    # Current working directory checkouts
+    for cand in [Path.cwd() / "daemon" / "moge_daemon.py", Path.cwd() / "moge_daemon.py"]:
         if cand.exists():
             return cand
 

@@ -2,9 +2,15 @@
 import sys
 
 import numpy as np
+from pathlib import Path
+BENCH_DIR = Path(__file__).resolve().parent
+if str(BENCH_DIR) not in sys.path:
+    sys.path.insert(0, str(BENCH_DIR))
+REPO_ROOT = BENCH_DIR.parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-sys.path.insert(0, "E:/MOGE")
-from shared.pano import (tangent_frame, extract_face, side_overlap_terms,
+from shared_pano import (tangent_frame, extract_face, side_overlap_terms,
                          solve_scales, apply_face_transform)
 
 
@@ -68,7 +74,7 @@ def test_apply_transform():
 
 
 def test_solve_affine_recovers_scale_shift():
-    from shared.pano import solve_affine, solve_scales
+    from shared_pano import solve_affine, solve_scales
     rng = np.random.default_rng(1)
     # true per-face (s, t); pair samples share rays, one pair polluted by a
     # doorway (second surface) in 30% of samples
@@ -104,7 +110,7 @@ def test_solve_affine_recovers_scale_shift():
 
 def test_flat_wall_no_collapse():
     """Verify that flat walls (narrow depth range) do not collapse into degenerate bas-relief (tiny s, huge t)."""
-    from shared.pano import solve_affine, solve_scales
+    from shared_pano import solve_affine, solve_scales
     # 8 faces looking at walls at ~2.0m depth, slight scale differences
     n_faces = 8
     true_scales = np.array([1.0, 1.05, 0.95, 1.02, 0.98, 1.04, 0.96, 1.01])
@@ -128,7 +134,7 @@ def test_flat_wall_no_collapse():
 
 def test_exclusive_wedges_tile():
     import math
-    from shared.pano import side_wedge_mask, pole_cap_mask, boundary_columns
+    from shared_pano import side_wedge_mask, pole_cap_mask, boundary_columns
     H = W = 1024
     m = side_wedge_mask(H, W, 8)
     # kept columns must span yaw_rel in [-22.8, +22.8] (45deg spacing/2 + margin)
@@ -158,7 +164,7 @@ def test_exclusive_wedges_tile():
     e4a, e4b = boundary_columns(4, 90.0, W)
     assert len(e4a) > 0 and len(e4b) > 0
 def test_cubemap_4_and_6_geometry():
-    from shared.pano import boundary_columns, side_wedge_mask, face_labels, solve_scales, solve_affine
+    from shared_pano import boundary_columns, side_wedge_mask, face_labels, solve_scales, solve_affine
     W = H = 1024
     # 4 walls at 98deg FOV: boundary columns hugging 45deg corners
     ci, cj = boundary_columns(4, 98.0, W)

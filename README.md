@@ -7,6 +7,9 @@
 
 **MoDe 3D Studio** (Metric Monocular Depth Engine) is a high-performance 3D depth and relighting studio for Blender. It connects Blender to a warm GPU daemon powered by **Microsoft MoGe-3**, turning single photographs into metric 3D point-splats, accurate camera setups, and relightable compositing graphs in ~1–2 seconds.
 
+📖 **Core Philosophy:** [Why We Built This: Flow State, Ian Hubert, and Metric 3D Scaffolding](docs/PHILOSOPHY.md)  
+📚 **User Manual:** [Complete Settings & Feature Guide](docs/USER_MANUAL.md)
+
 ---
 
 ## Key Features
@@ -112,11 +115,10 @@ Then in Blender (version 4.2 LTS or 5.x):
 
 | Preset | Target Hardware | Time | Description |
 | :--- | :--- | :---: | :--- |
-| **Draft** | 6GB – 8GB VRAM | ~0.8s | MoGe-2, Low detail, 1024px. Ideal for fast camera matching and layout previews. |
+| **Draft** | 6GB – 8GB VRAM | ~0.6s | MoGe-3 ViT-L, Low detail, 0 Refine passes, 1024px. Sub-second preview scrub. |
 | **Balanced (Recommended)** | 8GB – 12GB VRAM | ~1.8s | MoGe-3 ViT-L, High detail, 2 Refine passes, 1536px. Optimal balance of speed and detail. |
-| **Quality** | 12GB – 16GB VRAM | ~2.5s | MoGe-3 ViT-L, High detail, 3 Refine passes, 1536px. Sharper surface boundaries. |
-| **Giant** | 16GB+ VRAM | ~3.5s | MoGe-3 ViT-G (5GB weights), 1536px. Maximum depth accuracy for hero assets. |
-| **Max Quality** | 16GB+ VRAM | ~5.0s | MoGe-3 ViT-G, 4096px, 7 Refine passes, Flip x2 TTA, 4M point budget. |
+| **Quality** | 12GB – 16GB VRAM | ~3.2s | MoGe-3 ViT-L, High detail, 3 Refine passes, 2448px. Sharper surface boundaries. |
+| **Max Quality** | 16GB+ VRAM | ~5.5s | MoGe-3 ViT-G, High detail, 7 Refine passes, 4096px, Flip x2 Anti-Jitter, 4M point budget. |
 
 ---
 

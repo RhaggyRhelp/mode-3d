@@ -51,7 +51,8 @@ def run_tests():
     assert props.refine_steps == 3, f"Expected 3, got {props.refine_steps}"
 
     props.preset = "Draft"
-    assert props.model_version == "v2", f"Expected v2, got {props.model_version}"
+    assert props.model_version == "v3", f"Expected v3, got {props.model_version}"
+    assert props.refine_steps == 0, f"Expected 0, got {props.refine_steps}"
     assert props.max_size == 1024, f"Expected 1024, got {props.max_size}"
     print("  [OK] Scene properties and preset automation verified.")
 

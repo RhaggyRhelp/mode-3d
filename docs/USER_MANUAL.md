@@ -11,11 +11,10 @@
 4. [Section 3: Surface & Masking Modes](#4-surface--masking-modes)
 5. [Section 4: Field of View (FOV) & Camera Settings](#5-field-of-view-fov--camera-settings)
 6. [Section 5: Dot Size & Viewport Display](#6-dot-size--viewport-display)
-7. [Section 6: Crop Zoom (Targeted Micro-Detail)](#7-crop-zoom-targeted-micro-detail)
-8. [Section 7: 2.5D Compositor Relighter](#8-25d-compositor-relighter)
-9. [Section 8: Grid Levelling (Aligning Floor to Z=0)](#9-grid-levelling-aligning-floor-to-z0)
-10. [Section 9: Diagnostic Metadata Viewer](#10-diagnostic-metadata-viewer)
-11. [Troubleshooting Visual Artifacts](#11-troubleshooting-visual-artifacts)
+7. [Section 6: 2.5D Compositor Relighter](#7-25d-compositor-relighter)
+8. [Section 7: Grid Levelling (Aligning Floor to Z=0)](#8-grid-levelling-aligning-floor-to-z0)
+9. [Section 8: Diagnostic Metadata Viewer](#9-diagnostic-metadata-viewer)
+10. [Troubleshooting Visual Artifacts](#10-troubleshooting-visual-artifacts)
 
 ---
 
@@ -25,11 +24,11 @@ If you don't want to tweak 15 sliders, pick one of these four setups:
 
 | Goal / Scenario | Recommended Settings | Scan Time | What You Get |
 | :--- | :--- | :--- | :--- |
-| **Rapid Previews & Camera Matching** | Preset: **Draft**<br>Surface: **Seamless** | **~0.8 – 1.2s** | Fast camera FOV alignment and rough depth shapes. Great for quickly checking if a photo works. |
-| **Interior Rooms & Architecture** | Preset: **Balanced**<br>Surface: **Seamless**<br>Auto Level: **Level floor (auto)** | **~1.5 – 2.2s** | Watertight walls and floors without holes. Floor aligned cleanly to the Blender ground grid ($Z=0$). |
-| **Characters, Props & Furniture** | Preset: **Balanced** or **Quality**<br>Surface: **Split islands**<br>Mask sky/void: **ON** | **~2.0 – 3.5s** | Cuts out background "spiderweb curtains" and keeps edges clean and isolated. |
-| **Hero Shots & Hairline Details** | Preset: **Quality**<br>TTA Ensemble: **Flip x2**<br>Full-Res Color: **ON** | **~4.0 – 6.0s** | Denoised, jitter-free geometric depth with native camera texture sharpness. |
-| **Extreme All-Out Max Quality** | Preset: **Max Quality (Giant 4K)**<br>Surface: **Seamless** or **Split islands** | **~4.5 – 7.0s** | **The Ultimate Quality Bundle**: Giant ViT-G (5GB) backbone + 4096px resolution + 7 Refine passes + Flip x2 TTA + Crop Zoom enabled + 4,000,000 point budget! |
+| **Rapid Previews & Camera Matching** | Preset: **Draft**<br>Surface: **Seamless** | **~0.6s** | Fast sub-second camera FOV alignment and rough depth shapes. Great for quickly checking if a photo works. |
+| **Interior Rooms & Architecture** | Preset: **Balanced**<br>Surface: **Seamless**<br>Auto Level: **Level floor (auto)** | **~1.5 – 2.0s** | Watertight walls and floors without holes. Floor aligned cleanly to the Blender ground grid ($Z=0$). |
+| **Characters, Props & Furniture** | Preset: **Balanced** or **Quality**<br>Surface: **Split islands**<br>Mask sky/void: **ON** | **~2.0 – 3.2s** | Cuts out background "spiderweb curtains" and keeps edges clean and isolated. |
+| **Hero Shots & Hairline Details** | Preset: **Quality**<br>TTA Ensemble: **Flip x2**<br>Full-Res Color: **ON** | **~4.0 – 5.5s** | Denoised, jitter-free geometric depth with native camera texture sharpness. |
+| **Extreme All-Out Max Quality** | Preset: **Max Quality (Giant 4K)**<br>Surface: **Seamless** or **Split islands** | **~5.5 – 7.0s** | **The Ultimate Quality Bundle**: Giant ViT-G (5GB) backbone + 4096px resolution + 7 Refine passes + Flip x2 Anti-Jitter + 4,000,000 point budget! |
 
 ---
 
@@ -38,7 +37,7 @@ If you don't want to tweak 15 sliders, pick one of these four setups:
 At the very top of the sidebar panel, a segmented switcher lets you toggle between:
 
 * **Simple Mode (Default):** Streamlined, clutter-free workflow. Exposes only the essential controls: Pick Image, Preset, Surface Mode, and the large **Scan -> Splats** button. Once scanned, quick one-click shortcuts appear for **Camera**, **Level Floor**, and **Relight**.
-* **Advanced Mode:** Unfolds the full studio interface with all fine-grained sliders, daemon management, dot-size multipliers, point budgets up to 12M, crop zoom coordinates, and real-time metadata diagnostics.
+* **Advanced Mode:** Unfolds the full studio interface with all fine-grained sliders, daemon management, dot-size multipliers, point budgets up to 12M, and real-time metadata diagnostics.
 
 ---
 
@@ -88,15 +87,14 @@ These controls govern the neural network inference pass that extracts 3D depth a
 ### Preset (`preset`)
 * **What it does:** Pre-configures all underlying neural network parameters with tested, optimal ratios.
 * **Options:**
-  * **Draft (Fast <1.2s):** Uses **MoGe-2**, Low feature separation, 1 iteration, 1024px resolution. 
-    * *Best for:* Rapid thumbnail scrub, testing multiple angles, checking camera placement.
+  * **Draft (Fast <1.0s):** Uses **MoGe-3 Standard**, Low feature separation, 0 iterations, 1024px resolution.
+    * *Best for:* Sub-second rapid thumbnail scrub, checking camera placement without model swapping.
   * **Balanced (Recommended):** Uses **MoGe-3 Standard**, High feature separation, 2 iterations, 1536px resolution.
-    * *Best for:* 90% of real work. Balances crisp geometry, clean surface boundaries, and ~2s speed.
+    * *Best for:* 90% of real work. Balances crisp geometry, clean surface boundaries, and ~1.8s speed.
   * **Quality (2.5K Crisp):** Uses **MoGe-3 Standard**, High feature separation, 3 iterations, 2448px resolution.
-    * *Best for:* High-resolution scenes where fine edges and micro-creases matter.
+    * *Best for:* High-resolution scenes where fine edges and micro-creases matter (~3.2s).
   * **Max Quality (4K Hero):** All-out hero quality bundle. Uses **MoGe-3 Giant (7GB)**, 4096px resolution, 7 iterations, 2x Anti-Jitter, and 4M point budget.
     * *Best for:* Ultimate hero renders where every hairline crease, wire, and micro-silhouette counts.
-  * **Giant (1536px):** MoGe-3 Giant backbone at 1536px, 3 iterations (~7GB VRAM).
   * **Custom:** Automatically activates if you manually alter any fine-grained settings.
 
 ---
@@ -239,33 +237,7 @@ Found inside collapsible box **3. Dot size & display**.
 
 ---
 
-## 7. Crop Zoom (Targeted Micro-Detail)
-
-Found inside collapsible box **3b. Crop zoom**.
-
-```
-+-------------------------------------------------------------+
-| FULL SOURCE IMAGE                                           |
-|                                                             |
-|               +------------------+                          |
-|               |  CROP ZOOM ZONE  |                          |
-|               |  (CX=0.5, CY=0.5)|  ===> 4x Density Cloud   |
-|               |  Size=0.35       |       Merged seamlessly  |
-|               +------------------+       into main scan     |
-|                                                             |
-+-------------------------------------------------------------+
-```
-
-* **What it does:** Executes a second, focused AI inference pass on a cropped sub-region of your image with matched perspective, then merges this ultra-dense sub-cloud into the main scan.
-* **Settings:**
-  * **Enable zoom (`zoom_enable`):** Toggles the feature (adds ~1 additional inference pass).
-  * **CX / CY (`zoom_cx`, `zoom_cy`):** The center position of your zoom box (0.0 to 1.0 normalized coordinates). `0.5, 0.5` is dead center.
-  * **Zoom size (`zoom_size`):** The square crop size as a fraction of the photo's short edge (e.g., `0.35` = 35% of the frame).
-* **Best Scenario:** When you have a wide-angle room scan, but there is a desk prop, statue, or face in the center that needs 4x the geometric density.
-
----
-
-## 8. 2.5D Compositor Relighter
+## 7. 2.5D Compositor Relighter
 
 Found inside collapsible box **4. 2.5D relight (compositor)**.
 
@@ -280,7 +252,7 @@ Found inside collapsible box **4. 2.5D relight (compositor)**.
 
 ---
 
-## 9. Grid Levelling (Aligning Floor to Z=0)
+## 8. Grid Levelling (Aligning Floor to Z=0)
 
 Found inside box **5. Grid level**.
 
@@ -320,7 +292,7 @@ _________\_________________             _______|__________________ (Z = 0 Ground
 
 ---
 
-## 10. Diagnostic Metadata Viewer
+## 9. Diagnostic Metadata Viewer
 
 Found inside collapsible box **6. Scan metadata**.
 
@@ -335,7 +307,7 @@ Provides an instant technical audit of the last scan:
 
 ---
 
-## 11. Troubleshooting Visual Artifacts
+## 10. Troubleshooting Visual Artifacts
 
 ### 1. "The background has giant stretched curtains connecting it to the foreground"
 * **Cause:** *Surface Mode* is set to **Seamless**, which preserves every continuous triangle/point regardless of depth distance.

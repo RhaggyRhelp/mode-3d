@@ -8,18 +8,15 @@ DAEMON_URL = f"http://{DAEMON_HOST}:{DAEMON_PORT}"
 # v3 infer() maps level 0..9 -> num_tokens 1200..3600. Ultra=30 upstream = 9200 tokens -> OOM. Clamped.
 RESOLUTION_MAP = {"Low": 0, "Medium": 5, "High": 9}
 VALID_LEVELS = ("Low", "Medium", "High")
-VALID_MODELS = ("v3", "v2", "v1")
+VALID_MODELS = ("v3", "v2")
 VARIANTS = ("vitl", "vitg")
 
 PRESETS = {
-    # fast scrub: v2 + Low is ~3-5x cheaper than v3+High (ViT-L + SSR cost)
-    "Draft":       {"model_version": "v2", "variant": "vitl", "resolution_level": "Low",    "refine_steps": 1, "max_size": 1024},
-    "Balanced":    {"model_version": "v3", "variant": "vitl", "resolution_level": "High",   "refine_steps": 2, "max_size": 1536},
-    "Quality":     {"model_version": "v3", "variant": "vitl", "resolution_level": "High",   "refine_steps": 3, "max_size": 2448},
-    # Giant: measured same quality on typical shots, 2.7x VRAM, 1.7x infer.
-    # Only for hero shots with hairline structures; evicts vitl while loaded.
-    "Giant":       {"model_version": "v3", "variant": "vitg", "resolution_level": "High",   "refine_steps": 3, "max_size": 1536},
-    "Max Quality": {"model_version": "v3", "variant": "vitg", "resolution_level": "High",   "refine_steps": 7, "max_size": 4096, "tta": "flip", "zoom": True, "point_budget": 4_000_000},
+    # Fast scrub: v3 + Low + 0 refine steps is sub-second (~0.6s) without model switching
+    "Draft":       {"model_version": "v3", "variant": "vitl", "resolution_level": "Low",    "refine_steps": 0, "max_size": 1024, "tta": "off", "point_budget": 1200000},
+    "Balanced":    {"model_version": "v3", "variant": "vitl", "resolution_level": "High",   "refine_steps": 2, "max_size": 1536, "tta": "off", "point_budget": 1200000},
+    "Quality":     {"model_version": "v3", "variant": "vitl", "resolution_level": "High",   "refine_steps": 3, "max_size": 2448, "tta": "off", "point_budget": 2000000},
+    "Max Quality": {"model_version": "v3", "variant": "vitg", "resolution_level": "High",   "refine_steps": 7, "max_size": 4096, "tta": "flip", "point_budget": 4000000},
 }
 
 MAX_POINT_BUDGET = 12_000_000  # raised budget limit (was 1.2M)

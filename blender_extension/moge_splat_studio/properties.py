@@ -12,11 +12,10 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 PRESET_VALUES = {
-    "Draft": {"model_version": "v2", "variant": "vitl", "resolution_level": "Low", "refine_steps": 1, "max_size": 1024, "tta": "off", "zoom": False, "point_budget": 1200000},
-    "Balanced": {"model_version": "v3", "variant": "vitl", "resolution_level": "High", "refine_steps": 2, "max_size": 1536, "tta": "off", "zoom": False, "point_budget": 1200000},
-    "Quality": {"model_version": "v3", "variant": "vitl", "resolution_level": "High", "refine_steps": 3, "max_size": 2448, "tta": "off", "zoom": False, "point_budget": 2000000},
-    "Max Quality": {"model_version": "v3", "variant": "vitg", "resolution_level": "High", "refine_steps": 7, "max_size": 4096, "tta": "flip", "zoom": True, "point_budget": 4000000},
-    "Giant": {"model_version": "v3", "variant": "vitg", "resolution_level": "High", "refine_steps": 3, "max_size": 1536, "tta": "off", "zoom": False, "point_budget": 1200000},
+    "Draft": {"model_version": "v3", "variant": "vitl", "resolution_level": "Low", "refine_steps": 0, "max_size": 1024, "tta": "off", "point_budget": 1200000},
+    "Balanced": {"model_version": "v3", "variant": "vitl", "resolution_level": "High", "refine_steps": 2, "max_size": 1536, "tta": "off", "point_budget": 1200000},
+    "Quality": {"model_version": "v3", "variant": "vitl", "resolution_level": "High", "refine_steps": 3, "max_size": 2448, "tta": "off", "point_budget": 2000000},
+    "Max Quality": {"model_version": "v3", "variant": "vitg", "resolution_level": "High", "refine_steps": 7, "max_size": 4096, "tta": "flip", "point_budget": 4000000},
 }
 _STAMPING_PRESET = False
 
@@ -35,8 +34,6 @@ def _apply_preset(self, context):
         self.max_size = vals["max_size"]
         if "tta" in vals:
             self.tta_mode = vals["tta"]
-        if "zoom" in vals:
-            self.zoom_enable = vals["zoom"]
         if "point_budget" in vals:
             self.point_budget = vals["point_budget"]
     finally:
@@ -67,11 +64,10 @@ class MoGeSplatProperties(PropertyGroup):
     preset: EnumProperty(
         name="Preset",
         items=[
-            ("Draft", "Draft (Fast <1.2s)", "Fast preview scrub: MoGe-2, 1024px, 1 iteration"),
-            ("Balanced", "Balanced (Recommended)", "MoGe-3 Standard, 1536px, 2 iterations (~2s)"),
-            ("Quality", "Quality (2.5K Crisp)", "MoGe-3 Standard, 2448px, 3 iterations (~3.5s)"),
+            ("Draft", "Draft (Fast <1.0s)", "Sub-second preview scrub: MoGe-3, 1024px, 0 iterations"),
+            ("Balanced", "Balanced (Recommended)", "MoGe-3 Standard, 1536px, 2 iterations (~1.8s)"),
+            ("Quality", "Quality (2.5K Crisp)", "MoGe-3 Standard, 2448px, 3 iterations (~3.2s)"),
             ("Max Quality", "Max Quality (4K Hero)", "All-out hero preset: Giant ViT-G, 4096px, 7 iterations, 2x pass, 4M pts"),
-            ("Giant", "Giant (1536px)", "MoGe-3 Giant, 1536px, 3 iterations (~7GB VRAM)"),
             ("Custom", "Custom", "You tweaked a field by hand"),
         ],
         default="Balanced",
@@ -82,8 +78,7 @@ class MoGeSplatProperties(PropertyGroup):
         description="Underlying MoGe model architecture (MoGe-3 is recommended for all modern scans)",
         items=[
             ("v3", "MoGe-3", "Latest state-of-the-art geometry model"),
-            ("v2", "MoGe-2", "Legacy model for ultra-fast draft scrubbing"),
-            ("v1", "MoGe-1", "Legacy baseline"),
+            ("v2", "MoGe-2", "Legacy model"),
         ],
         default="v3",
         update=_mark_custom,
@@ -154,11 +149,10 @@ class MoGeSplatProperties(PropertyGroup):
     )
     shading_mode: EnumProperty(
         name="Lighting & Shading",
-        description="Lighting for points: Lit (reacts smoothly to scene lights), Unlit (photo color only), or Spheres (classic marbles)",
+        description="Lighting for points: Lit (reacts smoothly to scene lights) or Unlit (photo color only)",
         items=[
             ("NORMAL", "Lit (Reacts to Scene Lights)", "Points receive Blender scene light; walls & floors shade flat via SplatNormal"),
-            ("UNLIT", "Unlit (Photo Color Only)", "Exact MoGe Gradio look: flat color emission matching the photo, zero scene shadows"),
-            ("MARBLE", "Spherical Marbles", "Classic 3D marble look"),
+            ("UNLIT", "Unlit (Photo Color Only)", "Flat color emission matching the photo, zero scene shadows"),
         ],
         default="NORMAL",
     )
@@ -202,12 +196,6 @@ class MoGeSplatProperties(PropertyGroup):
         description="If the background GPU AI engine is down when you hit Generate, start it automatically",
         default=True,
     )
-    daemon_python: StringProperty(
-        name="AI Engine Python",
-        description="Python with torch that runs the AI engine. Empty = auto-detect. Can also be set in Addon Preferences.",
-        subtype="FILE_PATH",
-        default="",
-    )
     tta_mode: EnumProperty(
         name="Anti-Jitter Passes",
         description="Multi-pass inference to cancel noise and camera bias. 2x mirrors image to cut noise; 3x adds a downscaled pass for cleanest edge silhouettes",
@@ -219,42 +207,5 @@ class MoGeSplatProperties(PropertyGroup):
         default="off",
         update=_mark_custom,
     )
-    zoom_enable: BoolProperty(
-        name="Focal Region Boost",
-        description="Second dense inference on one square crop (same camera), merged into the same cloud (4x detail density)",
-        default=False,
-    )
-    zoom_cx: FloatProperty(name="Zoom center X", default=0.5, min=0.0, max=1.0)
-    zoom_cy: FloatProperty(name="Zoom center Y", default=0.5, min=0.0, max=1.0)
-    zoom_size: FloatProperty(
-        name="Zoom size",
-        description="Square side as a fraction of the photo's short edge.",
-        default=0.35,
-        min=0.1,
-        max=0.8,
-    )
-    level_info: StringProperty(default="")
-    show_display_box: BoolProperty(
-        name="Show dot display options",
-        description="Advanced dot-size controls.",
-        default=False,
-    )
-    show_relight_box: BoolProperty(
-        name="Show relight options",
-        description="2.5D relighter setup.",
-        default=False,
-    )
-    show_zoom_box: BoolProperty(
-        name="Show crop-zoom options",
-        description="Dense second inference on one region.",
-        default=False,
-    )
-    show_meta_box: BoolProperty(
-        name="Show scan metadata",
-        description="Last-scan record: image, model, FOV source, depths, color/radius sources, zoom, level.",
-        default=True,
-    )
-    metric_dim_text: StringProperty(default="Scan an image to see splat stats.")
-    depth_range_text: StringProperty(default="")
     last_scan_folder: StringProperty(default="")
     last_scanned_image: StringProperty(default="")

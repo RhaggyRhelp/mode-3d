@@ -354,9 +354,6 @@ class MOGE_OT_scan_splat_daemon(Operator):
         cam_data.show_name = True
         context.scene.camera = cam_obj
 
-        props.metric_dim_text = f"{pts.shape[0]:,} splats | {W}x{H} (native {W0}x{H0})"
-        props.depth_range_text = f"Depth: {min_d:.2f}m .. {max_d:.2f}m | FOV: {fov_x:.1f}°x{fov_y:.1f}° ({fov_src})"
-
         self.report({'INFO'}, f"Done: {pts.shape[0]:,} splats ({radius_src}). Hit Camera or Relight.")
         return {'FINISHED'}
 
@@ -507,7 +504,6 @@ class MOGE_OT_level_auto(Operator):
                 return {'CANCELLED'}
 
             empty = _apply_level_matrix(context, res["matrix_blender"], f"auto: {res.get('message', '')}")
-            props.level_info = f"Tilt {res.get('tilt_deg', 0):.1f}° | inliers {res.get('inlier_frac', 0) * 100:.1f}%"
             self.report({'INFO'}, f"Floor levelled to Z=0. Tweak via '{LEVEL_EMPTY}' Empty.")
             context.view_layer.objects.active = empty
             empty.select_set(True)

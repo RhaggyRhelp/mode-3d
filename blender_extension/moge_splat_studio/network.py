@@ -98,11 +98,13 @@ def daemon_post_multipart(
 
 
 def _daemon_log_path() -> Path:
-    return Path(tempfile.gettempdir()) / "moge_daemon.log"
+    from .cleanup import get_cache_root
+    return get_cache_root() / "moge_daemon.log"
 
 
 def _daemon_pid_path() -> Path:
-    return Path(tempfile.gettempdir()) / "moge_daemon.pid"
+    from .cleanup import get_cache_root
+    return get_cache_root() / "moge_daemon.pid"
 
 
 def _find_daemon_script() -> Path:
@@ -160,7 +162,6 @@ def resolve_daemon_python(props=None) -> Path:
             repo_root.parent / "MoGe" / ".venv",
             Path.home() / ".venv",
             Path.home() / "MoGe" / ".venv",
-            user_docs / "antigravity" / "mysterious-archimedes" / "MoGe" / ".venv",
             user_docs / "MoGe" / ".venv",
         ]
         for venv in venv_candidates:
@@ -228,8 +229,38 @@ def daemon_start(py: Path) -> int:
     return proc.pid
 
 
+def _verify_process_is_python(pid: int) -> bool:
+    """Verify that a PID belongs to a Python process before killing it."""
+    if pid <= 100:  # Protect system/reserved PIDs (0, 4, etc.)
+        return False
+    try:
+        if sys.platform == "win32":
+            proc = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            out = proc.stdout.lower()
+            return "python" in out
+        else:
+            cmdline_file = Path(f"/proc/{pid}/cmdline")
+            if cmdline_file.exists():
+                cmdline = cmdline_file.read_text(errors="ignore").lower()
+                return "python" in cmdline or "moge_daemon" in cmdline
+            proc = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "comm="],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return "python" in proc.stdout.lower()
+    except Exception:
+        return False
+
+
 def daemon_stop() -> tuple[bool, str]:
-    """Terminate the daemon process if running."""
+    """Terminate the daemon process if running, with safety checks."""
     pid_file = _daemon_pid_path()
     if not pid_file.exists():
         return False, "No running daemon PID file found."
@@ -239,6 +270,18 @@ def daemon_stop() -> tuple[bool, str]:
     except Exception:
         pid_file.unlink(missing_ok=True)
         return False, "Invalid PID file."
+
+    if pid <= 100:
+        pid_file.unlink(missing_ok=True)
+        return False, f"Refusing to kill reserved/system PID {pid}."
+
+    if not _is_pid_running(pid):
+        pid_file.unlink(missing_ok=True)
+        return True, f"Daemon process (PID {pid}) is not running."
+
+    if not _verify_process_is_python(pid):
+        pid_file.unlink(missing_ok=True)
+        return False, f"Refusing to kill PID {pid}: process is not Python."
 
     try:
         if sys.platform == "win32":

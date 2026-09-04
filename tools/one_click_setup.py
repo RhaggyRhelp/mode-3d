@@ -124,6 +124,12 @@ def check_and_install_dependencies():
                 tmp_zip = REPO_ROOT / "moge_temp.zip"
                 urllib.request.urlretrieve(zip_url, tmp_zip)
                 with zipfile.ZipFile(tmp_zip, "r") as z:
+                    # Security safeguard: Prevent Zip Slip (path traversal outside REPO_ROOT)
+                    resolved_root = REPO_ROOT.resolve()
+                    for member in z.infolist():
+                        target_p = (REPO_ROOT / member.filename).resolve()
+                        if not str(target_p).startswith(str(resolved_root)):
+                            raise ValueError(f"Security violation: path traversal detected in zip member: {member.filename}")
                     z.extractall(REPO_ROOT)
                 tmp_zip.unlink(missing_ok=True)
                 extracted_dir = REPO_ROOT / "MoGe-main"

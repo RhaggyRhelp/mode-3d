@@ -77,6 +77,23 @@ from shared.exif import fov_x_from_exif
 from moge.model import import_model_class_by_version
 
 app = FastAPI(title="MoDe Splat Daemon", version="2.1.0")
+MAX_UPLOAD_SIZE = 64 * 1024 * 1024  # 64 MB cap to prevent memory exhaustion DoS
+
+
+@app.middleware("http")
+async def security_origin_check(request, call_next):
+    """Block unauthorized cross-origin requests from external websites."""
+    origin = request.headers.get("origin")
+    if origin:
+        allowed = ("http://127.0.0.1", "http://localhost", "https://127.0.0.1", "https://localhost")
+        if not any(origin.startswith(prefix) for prefix in allowed):
+            return JSONResponse(
+                {"error": "Forbidden: cross-origin access from external websites is blocked."},
+                status_code=403,
+            )
+    return await call_next(request)
+
+
 MODELS: dict[str, torch.nn.Module] = {}
 TIMINGS: dict[str, float] = {}
 
@@ -222,6 +239,11 @@ async def infer(
         raw = await image.read()
         if not raw:
             return JSONResponse({"error": "empty image upload"}, status_code=400)
+        if len(raw) > MAX_UPLOAD_SIZE:
+            return JSONResponse(
+                {"error": f"image payload exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)}MB limit"},
+                status_code=413,
+            )
         arr = np.frombuffer(raw, dtype=np.uint8)
         bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if bgr is None:
@@ -348,6 +370,11 @@ async def level(
     t_all = time.perf_counter()
     try:
         raw = await maps.read()
+        if len(raw) > MAX_UPLOAD_SIZE:
+            return JSONResponse(
+                {"error": f"maps payload exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)}MB limit"},
+                status_code=413,
+            )
         try:
             z = np.load(io.BytesIO(raw), allow_pickle=False)
             points = np.asarray(z["points"], dtype=np.float64)

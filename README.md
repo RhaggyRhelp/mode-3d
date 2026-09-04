@@ -50,64 +50,53 @@ Single Image (.jpg/.png/.webp)
 
 ## Quick Start Guide
 
-### 1. Set Up Python Environment (Daemon)
+### 🚀 One-Click Automated Setup (Recommended)
 
-Ensure you have Python 3.10+ and a CUDA-capable GPU. Clone this repository and install dependencies:
+No terminal or command-line knowledge required! Just download/clone this repository and run the launcher:
 
-```bash
-# Clone the repository
-git clone https://github.com/RhaggyRhelp/mode-3d.git
-cd mode-3d
+* **Windows:** Double-click **`Start_MoDe_3D.bat`** in the main folder.
+* **Linux / macOS:** Double-click or run **`./Start_MoDe_3D.sh`**.
 
-# Create and activate a virtual environment
-python -m venv .venv
-# On Windows:
-.venv\Scripts\activate
-# On Linux/macOS:
-source .venv/bin/activate
-
-# Install PyTorch with CUDA support (example for CUDA 12.1+):
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# Install daemon dependencies
-pip install -r requirements.txt
-```
-
-> **Note on MoGe:** If `moge` is not installed as a package, clone the upstream [Microsoft MoGe](https://github.com/microsoft/MoGe) repository alongside this project or set the `MOGE_REPO` environment variable.
-
----
-
-### 2. Start the GPU Daemon
-
-Launch the warm daemon:
-
-* **Windows:** Double-click `daemon/launch_daemon.bat`, or run:
-  ```bash
-  python daemon/launch_daemon.py
-  ```
-* **Linux / macOS:**
-  ```bash
-  python daemon/launch_daemon.py
-  ```
-
-Check health in your browser: `http://127.0.0.1:8766/health`
-
----
-
-### 3. Install the Blender Extension
-
-Run the cross-platform packaging script to stage the extension directly into your local Blender:
-
-```bash
-python tools/install_extension.py
-```
+**What the One-Click Launcher does automatically:**
+1. ✅ Sets up an isolated Python virtual environment (`.venv`).
+2. ✅ Installs PyTorch with CUDA hardware acceleration.
+3. ✅ Installs all AI engine requirements and fetches the MoGe model backbone.
+4. ✅ Automatically packages the Blender extension (`dist/moge_splat_studio.zip`) and **auto-stages it directly into your local Blender installation**!
+5. ✅ Starts the warm GPU AI engine daemon ready for Blender.
 
 Then in Blender (version 4.2 LTS or 5.x):
 1. Open **Edit > Preferences > Extensions** (or Add-ons).
-2. Enable **MoDe 3D Studio**.
+2. Enable **MoDe 3D Studio** *(it will already appear in your extensions list!)*.
 3. In the 3D Viewport, press `N` to open the sidebar and navigate to the **MoDe 3D** tab.
+4. Select any photo and hit **Generate 3D Splats**!
 
 *(Alternatively, you can drag the built `.zip` from `dist/moge_splat_studio.zip` onto Blender and choose "Install from Disk".)*
+
+---
+
+### 🛠️ Manual Developer Setup (Optional)
+
+If you prefer to configure your environment manually:
+
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+# Windows: .venv\Scripts\activate | Linux/macOS: source .venv/bin/activate
+
+# 2. Install PyTorch with CUDA
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# 3. Install daemon dependencies
+pip install -r requirements.txt
+
+# 4. Stage extension to Blender
+python tools/install_extension.py
+
+# 5. Launch the warm GPU daemon
+python daemon/launch_daemon.py
+```
+
+Check health in your browser: `http://127.0.0.1:8766/health`
 
 ---
 

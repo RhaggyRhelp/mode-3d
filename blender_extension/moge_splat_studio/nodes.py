@@ -171,10 +171,10 @@ def ensure_splat_node_group_v2(fallback_radius: float) -> bpy.types.NodeTree:
     nat.data_type = "FLOAT"
     nat.inputs[0].default_value = "SplatRadius"
 
-    fmax = nodes.new(type="ShaderNodeMath")
-    fmax.location = (-200, -150)
-    fmax.operation = "MAXIMUM"
-    fmax.inputs[1].default_value = 0.002
+    fclamp = nodes.new(type="ShaderNodeClamp")
+    fclamp.location = (-200, -150)
+    fclamp.inputs["Min"].default_value = 0.001
+    fclamp.inputs["Max"].default_value = 0.06
 
     set_r = nodes.new(type="GeometryNodeSetPointRadius")
     set_r.location = (0, 0)
@@ -189,8 +189,8 @@ def ensure_splat_node_group_v2(fallback_radius: float) -> bpy.types.NodeTree:
 
     links.new(gin.outputs["Geometry"], to_pts.inputs["Mesh"])
     links.new(to_pts.outputs["Points"], set_r.inputs["Points"])
-    links.new(nat.outputs[0], fmax.inputs[0])
-    links.new(fmax.outputs[0], set_r.inputs["Radius"])
+    links.new(nat.outputs[0], fclamp.inputs["Value"])
+    links.new(fclamp.outputs["Result"], set_r.inputs["Radius"])
     links.new(set_r.outputs["Points"], set_mat.inputs["Geometry"])
 
     out_sock = next((s for s in gout.inputs if "Geometr" in s.name or s.bl_idname == "NodeSocketGeometry"), None)
@@ -232,7 +232,7 @@ def ensure_splat_node_group_surfels(fallback_radius: float) -> bpy.types.NodeTre
     circle.location = (-500, -250)
     circle.fill_type = "NGON"
     circle.inputs["Vertices"].default_value = 6
-    circle.inputs["Radius"].default_value = 2.4
+    circle.inputs["Radius"].default_value = 1.0
 
     store_coord = nodes.new(type="GeometryNodeStoreNamedAttribute")
     store_coord.location = (-300, -250)
@@ -259,11 +259,11 @@ def ensure_splat_node_group_surfels(fallback_radius: float) -> bpy.types.NodeTre
     nat_rad.data_type = "FLOAT"
     nat_rad.inputs["Name"].default_value = "SplatRadius"
 
-    fmax = nodes.new(type="ShaderNodeMath")
-    fmax.location = (-100, -50)
-    fmax.operation = "MAXIMUM"
-    fmax.inputs[1].default_value = 0.002
-    links.new(nat_rad.outputs[0], fmax.inputs[0])
+    fclamp = nodes.new(type="ShaderNodeClamp")
+    fclamp.location = (-100, -50)
+    fclamp.inputs["Min"].default_value = 0.001
+    fclamp.inputs["Max"].default_value = 0.06
+    links.new(nat_rad.outputs[0], fclamp.inputs["Value"])
 
     inst = nodes.new(type="GeometryNodeInstanceOnPoints")
     inst.location = (150, 0)
@@ -271,7 +271,7 @@ def ensure_splat_node_group_surfels(fallback_radius: float) -> bpy.types.NodeTre
     links.new(to_pts.outputs["Points"], inst.inputs["Points"])
     links.new(store_coord.outputs["Geometry"], inst.inputs["Instance"])
     links.new(align.outputs["Rotation"], inst.inputs["Rotation"])
-    links.new(fmax.outputs[0], inst.inputs["Scale"])
+    links.new(fclamp.outputs["Result"], inst.inputs["Scale"])
 
     realize = nodes.new(type="GeometryNodeRealizeInstances")
     realize.location = (350, 0)

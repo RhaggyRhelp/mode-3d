@@ -32,6 +32,8 @@ from .preferences import get_preferences
 LEVEL_EMPTY = "MoGe_Level"
 LEVEL_MARKERS = ("MoGe_Floor_A", "MoGe_Floor_B", "MoGe_Floor_C")
 POINT_SCALE = 1.4
+R_MIN = 0.001
+R_MAX = 0.06
 
 
 def fov_y_from_fov_x(fov_x_deg: float, w: int, h: int) -> float:
@@ -227,7 +229,9 @@ class MOGE_OT_scan_splat_daemon(Operator):
             self.report({'ERROR'}, f"Failed to decode response: {e}")
             return {'CANCELLED'}
 
-        valid = mask & np.isfinite(depth) & np.all(np.isfinite(points), axis=-1)
+        valid = mask & np.isfinite(depth) & (depth >= 0.08) & np.all(np.isfinite(points), axis=-1)
+        if normal is not None and getattr(normal, 'shape', None) and normal.shape[:2] == depth.shape:
+            valid = valid & np.all(np.isfinite(normal), axis=-1)
         ys, xs = np.nonzero(valid)
         n_all = int(valid.sum())
         if n_all < 100:
@@ -268,9 +272,10 @@ class MOGE_OT_scan_splat_daemon(Operator):
         fx_norm = float(K[0, 0])
         fx_px = fx_norm * W if fx_norm <= 1.0 else fx_norm
 
-        # Adaptive radii
+        # Adaptive radii with guaranteed physical bounds (prevents giant blobs)
         def _adaptive_radii(d, fx):
-            return (np.maximum(d, 0.05) / max(fx, 1.0)) * POINT_SCALE * float(props.radius_scale)
+            raw = (np.maximum(d, 0.05) / max(fx, 1.0)) * POINT_SCALE * float(props.radius_scale)
+            return np.clip(raw, R_MIN, R_MAX)
 
         radii = _adaptive_radii(pdepth, fx_px)
         radius_fallback = float(np.median(radii)) if len(radii) else 0.01
@@ -393,7 +398,8 @@ class MOGE_OT_update_splat_radius(Operator):
         fx_px = float(obj.get("moge_fx_px", 1000.0))
         scale = float(props.radius_scale)
 
-        radii = (np.maximum(depths, 0.05) / max(fx_px, 1.0)) * POINT_SCALE * scale
+        raw = (np.maximum(depths, 0.05) / max(fx_px, 1.0)) * POINT_SCALE * scale
+        radii = np.clip(raw, R_MIN, R_MAX)
         attr_r.data.foreach_set("value", radii)
         mesh.update()
         obj["moge_radius_scale"] = scale

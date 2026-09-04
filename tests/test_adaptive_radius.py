@@ -8,9 +8,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from shared.protocol import POINT_SCALE
+from shared.protocol import POINT_SCALE, R_MIN, R_MAX
 
-R_MIN, R_MAX = 0.001, 0.25
 FX = 1000.0
 
 
@@ -27,7 +26,7 @@ def test_perspective_falloff():
 def test_typical_scene_values():
     r = radii([4.0, 16.0, 48.0])
     assert abs(r[0] - 0.0056) < 1e-4, r  # 5.6mm near
-    assert abs(r[2] - 0.0672) < 1e-4, r  # 67mm far
+    assert abs(r[2] - 0.0600) < 1e-4, r  # 60mm far clamped (R_MAX ceiling)
     assert bool(np.all(np.diff(r) > 0))  # monotonic
 
 

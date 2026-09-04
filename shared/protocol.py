@@ -21,6 +21,8 @@ PRESETS = {
 
 MAX_POINT_BUDGET = 12_000_000  # raised budget limit (was 1.2M)
 POINT_SCALE = 1.4              # matches DepthMap3DViewer(point_scale=1.4)
+R_MIN = 0.001                  # 1mm minimum splat radius
+R_MAX = 0.06                   # 60mm maximum splat radius ceiling (prevents giant blobs)
 MAX_INFER_DIM = 4096           # support 4K input on 16GB+ GPUs (RTX 4070 Ti SUPER)
 DEFAULT_MAX_SIZE = 1536
 

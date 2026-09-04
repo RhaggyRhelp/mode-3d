@@ -141,7 +141,11 @@ def run_tests():
         cam_obj = bpy.data.objects.get("MoGe_Camera")
         assert cam_obj is not None, "MoGe_Camera missing!"
         assert cam_obj.data.lens > 0.0, f"Invalid camera lens: {cam_obj.data.lens}"
-        print(f"  [OK] MoGe_Camera created (lens: {cam_obj.data.lens:.1f}mm).")
+        assert cam_obj.data.show_passepartout is True, "show_passepartout not True!"
+        assert cam_obj.data.passepartout_alpha == 1.0, f"passepartout_alpha expected 1.0, got {cam_obj.data.passepartout_alpha}"
+        assert bpy.context.scene.render.resolution_x > 0, "resolution_x not set!"
+        assert bpy.context.scene.render.resolution_y > 0, "resolution_y not set!"
+        print(f"  [OK] MoGe_Camera created (lens: {cam_obj.data.lens:.1f}mm, passepartout: {cam_obj.data.passepartout_alpha}, res: {bpy.context.scene.render.resolution_x}x{bpy.context.scene.render.resolution_y}).")
 
         # 7. Test secondary operators on the live scan
         print("[TEST 7/8] Testing secondary operators (radius, camera, relight, level)...")

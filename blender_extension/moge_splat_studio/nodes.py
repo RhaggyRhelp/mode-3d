@@ -317,20 +317,15 @@ def new_splat_object(
 
     mesh = bpy.data.meshes.new(name=obj_name + "_Mesh")
     mesh.vertices.add(n)
-    flat_co = np.empty(n * 3, dtype=np.float32)
-    flat_co[0::3] = xyz[:, 0]
-    flat_co[1::3] = xyz[:, 1]
-    flat_co[2::3] = xyz[:, 2]
+    flat_co = np.ascontiguousarray(xyz, dtype=np.float32).ravel()
     mesh.vertices.foreach_set("co", flat_co)
     mesh.update()
 
     cattr = mesh.color_attributes.new(name="Color", type="FLOAT_COLOR", domain="POINT")
-    flat_col = np.empty(n * 4, dtype=np.float32)
-    flat_col[0::4] = rgb01[:, 0]
-    flat_col[1::4] = rgb01[:, 1]
-    flat_col[2::4] = rgb01[:, 2]
-    flat_col[3::4] = 1.0
-    cattr.data.foreach_set("color", flat_col)
+    flat_col = np.empty((n, 4), dtype=np.float32)
+    flat_col[:, :3] = rgb01
+    flat_col[:, 3] = 1.0
+    cattr.data.foreach_set("color", flat_col.ravel())
 
     # Point attributes
     items = [

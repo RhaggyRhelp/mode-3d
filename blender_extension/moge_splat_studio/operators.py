@@ -239,8 +239,14 @@ class MOGE_OT_scan_splat_daemon(Operator):
             return {'CANCELLED'}
 
         stride = 1
-        if n_all > props.point_budget:
-            stride = int(math.ceil(n_all / float(props.point_budget)))
+        effective_budget = props.point_budget
+        if props.splat_style == 'SURFELS':
+            # Safeguard: Each surfel instantiates a 6-sided polygon.
+            # Clamp surfels to 500k to prevent realizing >3M polygons and freezing the viewport depsgraph.
+            effective_budget = min(effective_budget, 500_000)
+
+        if n_all > effective_budget:
+            stride = int(math.ceil(n_all / float(effective_budget)))
             xs = xs[::stride]
             ys = ys[::stride]
         pts = points[ys, xs]
@@ -283,12 +289,6 @@ class MOGE_OT_scan_splat_daemon(Operator):
 
         # --- Self-Cleaning: Wipe previous temporary scan files ---
         cache_dir = prepare_new_scan_cache()
-        try:
-            _save_rgb_to_png(img_rgb, cache_dir / "image.png")
-            nvis = ((np.clip(normal, -1, 1) * 0.5 + 0.5) * 255.0).astype(np.uint8)
-            _save_rgb_to_png(nvis, cache_dir / "normal.png")
-        except Exception as e:
-            print(f"[MoGe] Warning saving preview images: {e}")
 
         try:
             (cache_dir / "response.npz").write_bytes(payload)
@@ -310,6 +310,11 @@ class MOGE_OT_scan_splat_daemon(Operator):
 
         props.last_scan_folder = str(cache_dir)
         props.last_scanned_image = target_path
+        props.last_scan_points = int(pts.shape[0])
+        props.last_scan_model = f"{props.model_version}/{getattr(props, 'model_variant', 'vitl') or 'vitl'}"
+        props.last_scan_depth_range = f"{min_d:.2f}m .. {max_d:.2f}m"
+        props.last_scan_fov = f"{fov_x:.1f}° × {fov_y:.1f}° ({fov_src})"
+        props.cache_size_mb = round(len(payload) / (1024.0 * 1024.0), 1)
 
         # Cleanup old Blender objects & datablocks if configured
         prefs = get_preferences()
@@ -357,7 +362,16 @@ class MOGE_OT_scan_splat_daemon(Operator):
         cam_data.clip_end = max(100.0, max_d * 2.0)
         cam_data.display_size = 0.5
         cam_data.show_name = True
+        cam_data.show_passepartout = True
+        cam_data.passepartout_alpha = 1.0
         context.scene.camera = cam_obj
+
+        # Match scene render resolution & aspect ratio to input photo
+        if W0 > 0 and H0 > 0:
+            context.scene.render.resolution_x = int(W0)
+            context.scene.render.resolution_y = int(H0)
+            context.scene.render.pixel_aspect_x = 1.0
+            context.scene.render.pixel_aspect_y = 1.0
 
         self.report({'INFO'}, f"Done: {pts.shape[0]:,} splats ({radius_src}). Hit Camera or Relight.")
         return {'FINISHED'}
@@ -419,6 +433,10 @@ class MOGE_OT_view_camera(Operator):
             self.report({'ERROR'}, "No MoGe camera in scene.")
             return {'CANCELLED'}
         context.scene.camera = cam
+        if hasattr(cam.data, "passepartout_alpha"):
+            cam.data.show_passepartout = True
+            cam.data.passepartout_alpha = 1.0
+
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
                 for space in area.spaces:
@@ -437,10 +455,24 @@ class MOGE_OT_setup_compositor_relight(Operator):
         active_dir = get_active_scan_dir()
         img_file = active_dir / "image.png"
         norm_file = active_dir / "normal.png"
+        npz_file = active_dir / "response.npz"
 
-        if not img_file.exists() or not norm_file.exists():
+        if not npz_file.exists():
             self.report({'ERROR'}, "No active scan cache. Run Scan first.")
             return {'CANCELLED'}
+
+        # Lazy export: generate image.png and normal.png on-demand if not already written
+        if not img_file.exists() or not norm_file.exists():
+            try:
+                z = np.load(npz_file, allow_pickle=False)
+                img_rgb = np.asarray(z["image"])
+                normal = np.asarray(z["normal"], dtype=np.float32)
+                _save_rgb_to_png(img_rgb, img_file)
+                nvis = ((np.clip(normal, -1, 1) * 0.5 + 0.5) * 255.0).astype(np.uint8)
+                _save_rgb_to_png(nvis, norm_file)
+            except Exception as e:
+                self.report({'ERROR'}, f"Failed generating preview maps: {e}")
+                return {'CANCELLED'}
 
         ok, msg = setup_compositor_relighter(context, img_file, norm_file)
         if ok:

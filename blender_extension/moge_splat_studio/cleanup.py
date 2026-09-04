@@ -28,31 +28,32 @@ def get_active_scan_dir() -> Path:
 
 
 def prepare_new_scan_cache() -> Path:
-    """Wipes previous temporary scan payloads so disk junk never accumulates.
-
-    Called immediately before a new scan begins.
-    """
-    # 1. Clean active directory
-    active = get_active_scan_dir()
-    for item in active.iterdir():
-        try:
-            if item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-            else:
-                item.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    # 2. Scrub any legacy loose scan folders in tempdir
+    """Wipes previous temporary scan payloads so disk junk never accumulates."""
+    # 1. Scrub any legacy loose scan folders in tempdir (excluding deterministic studio cache)
     try:
         temp_root = Path(tempfile.gettempdir())
-        for prefix in ("moge_splat_*", "moge_direct_*"):
-            for old_dir in temp_root.glob(prefix):
-                if old_dir.is_dir():
-                    shutil.rmtree(old_dir, ignore_errors=True)
+        for old_dir in temp_root.glob("moge_direct_*"):
+            if old_dir.is_dir():
+                shutil.rmtree(old_dir, ignore_errors=True)
+        for old_dir in temp_root.glob("moge_splat_*"):
+            if old_dir.name != "moge_splat_studio_cache" and old_dir.is_dir():
+                shutil.rmtree(old_dir, ignore_errors=True)
     except Exception:
         pass
 
+    # 2. Clean active directory
+    active = get_active_scan_dir()
+    if active.exists():
+        for item in active.iterdir():
+            try:
+                if item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    active.mkdir(parents=True, exist_ok=True)
     return active
 
 
@@ -70,15 +71,22 @@ def get_cache_size_mb() -> float:
 
     # Also check legacy folders
     temp_root = Path(tempfile.gettempdir())
-    for prefix in ("moge_splat_*", "moge_direct_*"):
-        for old_dir in temp_root.glob(prefix):
-            if old_dir.is_dir():
-                for p in old_dir.rglob("*"):
-                    if p.is_file():
-                        try:
-                            total_bytes += p.stat().st_size
-                        except Exception:
-                            pass
+    for old_dir in temp_root.glob("moge_direct_*"):
+        if old_dir.is_dir():
+            for p in old_dir.rglob("*"):
+                if p.is_file():
+                    try:
+                        total_bytes += p.stat().st_size
+                    except Exception:
+                        pass
+    for old_dir in temp_root.glob("moge_splat_*"):
+        if old_dir.name != "moge_splat_studio_cache" and old_dir.is_dir():
+            for p in old_dir.rglob("*"):
+                if p.is_file():
+                    try:
+                        total_bytes += p.stat().st_size
+                    except Exception:
+                        pass
 
     return total_bytes / (1024.0 * 1024.0)
 
@@ -100,17 +108,26 @@ def purge_all_temporary_storage() -> tuple[float, int]:
         shutil.rmtree(cache_root, ignore_errors=True)
 
     temp_root = Path(tempfile.gettempdir())
-    for prefix in ("moge_splat_*", "moge_direct_*"):
-        for old_dir in list(temp_root.glob(prefix)):
-            if old_dir.is_dir():
-                for p in list(old_dir.rglob("*")):
-                    if p.is_file():
-                        try:
-                            bytes_freed += p.stat().st_size
-                            files_removed += 1
-                        except Exception:
-                            pass
-                shutil.rmtree(old_dir, ignore_errors=True)
+    for old_dir in list(temp_root.glob("moge_direct_*")):
+        if old_dir.is_dir():
+            for p in list(old_dir.rglob("*")):
+                if p.is_file():
+                    try:
+                        bytes_freed += p.stat().st_size
+                        files_removed += 1
+                    except Exception:
+                        pass
+            shutil.rmtree(old_dir, ignore_errors=True)
+    for old_dir in list(temp_root.glob("moge_splat_*")):
+        if old_dir.name != "moge_splat_studio_cache" and old_dir.is_dir():
+            for p in list(old_dir.rglob("*")):
+                if p.is_file():
+                    try:
+                        bytes_freed += p.stat().st_size
+                        files_removed += 1
+                    except Exception:
+                        pass
+            shutil.rmtree(old_dir, ignore_errors=True)
 
     # Clean daemon log/pid if safe
     for fname in ("moge_daemon.log", "moge_daemon.pid"):
@@ -148,6 +165,15 @@ def purge_orphaned_blender_datablocks() -> int:
             except Exception:
                 pass
 
+    # Cameras
+    for cam in list(bpy.data.cameras):
+        if cam.users == 0 and "MoGe" in cam.name:
+            try:
+                bpy.data.cameras.remove(cam)
+                removed_count += 1
+            except Exception:
+                pass
+
     # Images
     for img in list(bpy.data.images):
         if img.users == 0 and ("moge" in img.name.lower() or "splat" in img.name.lower() or img.name in ("image.png", "normal.png")):
@@ -178,6 +204,9 @@ class MOGE_OT_purge_all_cache(Operator):
     def execute(self, context):
         mb_freed, files_removed = purge_all_temporary_storage()
         blocks_removed = purge_orphaned_blender_datablocks()
+
+        if hasattr(context.scene, "moge_splat_props"):
+            context.scene.moge_splat_props.cache_size_mb = 0.0
 
         msg = f"Purged {mb_freed:.1f} MB disk cache ({files_removed} files) and {blocks_removed} unused Blender blocks."
         print(f"[MoGe Splat Studio] {msg}")

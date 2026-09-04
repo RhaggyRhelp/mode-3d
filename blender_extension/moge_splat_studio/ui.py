@@ -1,13 +1,8 @@
 """User Interface Panels for MoGe Splat Studio."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import bpy
 from bpy.types import Panel
-
-from .cleanup import get_cache_size_mb, get_active_scan_dir
 
 
 class VIEW3D_PT_moge_splat(Panel):
@@ -129,24 +124,20 @@ class VIEW3D_PT_moge_splat(Panel):
         row_post.operator("moge_splat.level_auto", text="Align Floor", icon='SNAP_FACE')
         row_post.operator("moge_splat.setup_relight", text="Relight Scene", icon='LIGHT_SUN')
 
-        # Diagnostics & Last Scan Info
-        meta_file = get_active_scan_dir() / "meta.json"
-        if meta_file.exists():
-            try:
-                meta = json.loads(meta_file.read_text())
-                diag_box = layout.box()
-                diag_box.label(text="Last Scan Diagnostics:", icon='INFO')
-                diag_box.label(text=f"Points: {meta.get('points', 0):,} | Engine: {meta.get('model_version', '')}/{meta.get('variant', '')}")
-                diag_box.label(text=f"Depth: {meta.get('min_depth', 0):.2f}m .. {meta.get('max_depth', 0):.2f}m")
-                diag_box.label(text=f"FOV: {meta.get('fov_x', 0):.1f}° × {meta.get('fov_y', 0):.1f}° ({meta.get('fov_src', '')})")
-            except Exception:
-                pass
+        # Diagnostics & Last Scan Info (0ms memory lookup, zero disk I/O during redraw)
+        if props.last_scan_points > 0:
+            diag_box = layout.box()
+            diag_box.label(text="Last Scan Diagnostics:", icon='INFO')
+            diag_box.label(text=f"Points: {props.last_scan_points:,} | Engine: {props.last_scan_model}")
+            if props.last_scan_depth_range:
+                diag_box.label(text=f"Depth: {props.last_scan_depth_range}")
+            if props.last_scan_fov:
+                diag_box.label(text=f"FOV: {props.last_scan_fov}")
 
-        # Cache & Clean Box
+        # Cache & Clean Box (cached size, zero filesystem rglob during redraw)
         cbox = layout.box()
         crow = cbox.row(align=True)
-        cache_mb = get_cache_size_mb()
-        crow.label(text=f"Cache: {cache_mb:.1f} MB", icon='DISK_DRIVE')
+        crow.label(text=f"Cache: {props.cache_size_mb:.1f} MB", icon='DISK_DRIVE')
         crow.operator("moge_splat.purge_all_cache", text="Purge Cache", icon='TRASH')
 
         # Professional Accreditation Box

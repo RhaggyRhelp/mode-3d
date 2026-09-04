@@ -209,3 +209,8 @@ class MoGeSplatProperties(PropertyGroup):
     )
     last_scan_folder: StringProperty(default="")
     last_scanned_image: StringProperty(default="")
+    cache_size_mb: FloatProperty(name="Cache Size (MB)", default=0.0)
+    last_scan_points: IntProperty(name="Last Scan Points", default=0)
+    last_scan_model: StringProperty(name="Last Scan Model", default="")
+    last_scan_depth_range: StringProperty(name="Last Scan Depth Range", default="")
+    last_scan_fov: StringProperty(name="Last Scan FOV", default="")

@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "moge-splat-studio"
+name = "mode-3d"
 version = "2.1.0"
-description = "Warm-daemon metric point-splats and 2.5D compositor relighter for Blender"
+description = "MoDe 3D: Metric Monocular Depth & Relighting Studio for Blender"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "MoGe Splat Studio Contributors" }
+    { name = "MeshHead & Contributors" }
 ]
-keywords = ["blender", "moge", "depth", "pointcloud", "3d-reconstruction", "computer-vision"]
+keywords = ["blender", "moge", "mode-3d", "depth", "pointcloud", "3d-reconstruction", "computer-vision"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",

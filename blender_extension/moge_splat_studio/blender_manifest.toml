@@ -2,13 +2,13 @@ schema_version = "1.0.0"
 
 id = "moge_splat_studio"
 version = "2.1.0"
-name = "MoGe Splat Studio"
-tagline = "Warm-daemon metric point-splats + 2.5D relighter (Blender 4.2+ / 5.x)"
-maintainer = "Navneeth & MoGe Splat Studio Contributors"
+name = "MoDe 3D Studio"
+tagline = "Metric Monocular Depth & Relighting Studio for Blender (4.2+ / 5.x)"
+maintainer = "MeshHead & Contributors"
 type = "add-on"
 blender_version_min = "4.2.0"
 license = [
   "SPDX:MIT",
 ]
-website = "https://github.com/microsoft/MoGe"
+website = "https://github.com/RhaggyRhelp/mode-3d"
 tags = ["Import-Export", "3D View", "Material", "Lighting"]

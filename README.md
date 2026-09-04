@@ -1,11 +1,11 @@
-# MoGe Splat Studio
+# MoDe 3D Studio
 
 [![Blender](https://img.shields.io/badge/Blender-4.2%20%7C%205.x-orange.svg)](https://www.blender.org/)
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**MoGe Splat Studio** is a high-performance 3D reconstruction and lighting studio for Blender. It connects Blender to a warm GPU daemon powered by **Microsoft MoGe-3**, turning single photographs into metric 3D point-splats, accurate camera setups, and relightable compositing graphs in ~1–2 seconds.
+**MoDe 3D Studio** (Metric Monocular Depth Engine) is a high-performance 3D depth and relighting studio for Blender. It connects Blender to a warm GPU daemon powered by **Microsoft MoGe-3**, turning single photographs into metric 3D point-splats, accurate camera setups, and relightable compositing graphs in ~1–2 seconds.
 
 ---
 
@@ -53,8 +53,8 @@ Ensure you have Python 3.10+ and a CUDA-capable GPU. Clone this repository and i
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/moge-splat-studio.git
-cd moge-splat-studio
+git clone https://github.com/RhaggyRhelp/mode-3d.git
+cd mode-3d
 
 # Create and activate a virtual environment
 python -m venv .venv
@@ -101,8 +101,8 @@ python tools/install_extension.py
 
 Then in Blender (version 4.2 LTS or 5.x):
 1. Open **Edit > Preferences > Extensions** (or Add-ons).
-2. Enable **MoGe Splat Studio**.
-3. In the 3D Viewport, press `N` to open the sidebar and navigate to the **MoGe Splat** tab.
+2. Enable **MoDe 3D Studio**.
+3. In the 3D Viewport, press `N` to open the sidebar and navigate to the **MoDe 3D** tab.
 
 *(Alternatively, you can drag the built `.zip` from `dist/moge_splat_studio.zip` onto Blender and choose "Install from Disk".)*
 

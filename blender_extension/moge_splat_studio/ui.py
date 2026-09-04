@@ -13,8 +13,8 @@ from .cleanup import get_cache_size_mb, get_active_scan_dir
 class VIEW3D_PT_moge_splat(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'MoGe Splat'
-    bl_label = 'MoGe Splat Studio'
+    bl_category = 'MoDe 3D'
+    bl_label = 'MoDe 3D Studio'
 
     def draw(self, context):
         layout = self.layout
@@ -151,6 +151,6 @@ class VIEW3D_PT_moge_splat(Panel):
 
         # Professional Accreditation Box
         abox = layout.box()
-        abox.label(text="MoGe Splat Studio", icon='WORLD')
+        abox.label(text="MoDe 3D Studio", icon='WORLD')
         abox.label(text="Core Architecture: Microsoft MoGe-3")
         abox.label(text="Wang, Qian, et al. (CVPR / NeurIPS)")

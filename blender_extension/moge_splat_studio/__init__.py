@@ -1,12 +1,12 @@
 bl_info = {
-    "name": "MoGe Splat Studio",
-    "author": "Navneeth & MoGe Splat Studio Contributors",
+    "name": "MoDe 3D Studio",
+    "author": "MeshHead & Contributors",
     "version": (2, 1, 0),
     "blender": (4, 2, 0),
-    "location": "View3D > Sidebar > MoGe Splat",
-    "description": "Warm-daemon metric point-splats, metric camera, and 2.5D compositor relighter based on Microsoft MoGe-3",
+    "location": "View3D > Sidebar > MoDe 3D",
+    "description": "MoDe 3D: Metric Monocular Depth & Relighting Studio for Blender (4.2+ / 5.x)",
     "category": "Import-Export",
-    "doc_url": "https://github.com/microsoft/MoGe",
+    "doc_url": "https://github.com/RhaggyRhelp/mode-3d",
 }
 
 import bpy

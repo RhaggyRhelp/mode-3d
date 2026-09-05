@@ -83,23 +83,23 @@ Root causes on Blender 5.2.1 (all legacy CompositorNode* math/mix/composite type
 Ruicheng/moge-3-vitg (5GB weights) measured head-to-head vs vitl @1536/High/r3: warmed infer 0.48s vs 0.29s, peak VRAM 7.3GB vs 2.7GB, load 10s vs 3.5s, geometry proxies identical (sharpness, inlier 4.4 vs 4.5%, tilt within 0.2deg, normal fields agree median 7.4deg). Verdict: same quality on typical shots, 2.7x memory. Daemon takes variant=vitl|vitg (default vitl, old clients unaffected); one v3 variant resident at a time with logged eviction (verified live both directions, no leak: 5.06GB <-> 1.50GB). Blender Giant preset stamps variant=vitg (no extra panel row). First Giant scan pays ~10s load once.
 
 
-## 2.8 Push limits: TTA + EXIF FOV + crop-zoom + meta viewer + passepartout (shipped)
+## 2.8 Push limits: TTA + EXIF FOV + meta viewer + passepartout (shipped)
 
 TTA: /infer tta=off/flip/flip3. flip = mirror pair, mean-fused (cancels mirror bias, halves jitter); flip3 adds a 0.8x view for true-median outlier rejection (shared/tta.py, numpy-only, tested). Measured: slight denoise direction, edge frac 0.0174 -> 0.0160. 2-3x time. Default off.
 
 EXIF: 35mm-equiv focal (nested sub-IFD aware) feeds model.infer(fov_x=...) so geometry itself improves; fov_src manual/exif/model recorded in npz+meta. Verified live: Pixel photo 73.74deg direct == daemon.
 
-Crop-zoom: /zoom endpoint infers a native crop with crop-correct focal (normalized-K math in shared/zoom.py) and returns points in the PARENT frame; Blender drops parent footprint pixels and merges pre-build (own radii via zoom fx, native colors via crop-rect mapping, 500k zoom cap). Caught by test: wrong focal (K00*crop_w) gave 62% seam; fixed formula gives 8.6% median boundary seam (0.2% best side), verified live on the 4K phone photo (1075px crop -> 1.16M dense pts).
+Crop-zoom: FUTURE, not shipped in v2.1 (no /zoom endpoint, no shared/zoom.py). Prior prototype pruned in e5e1f8d; design notes kept for roadmap only.
 
 Meta viewer: box 6 renders last-scan meta.json via shared/meta.py (panel vendors a parity-tested copy). Level ops stamp/clear the level record. Camera: passepartout_alpha=1.0 + show on every scan.
 
 
-## 2.9 Panorama rooms (shipped)
+## 2.9 Panorama rooms (FUTURE, not shipped)
 
-POST /pano: equirect (2:1 checked) -> 8 yaw tangent faces + top/bottom poles at forced 90deg FOV (shared/pano.py gnomonic extraction, numpy bilinear fallback) -> per-face infer -> loop-closed scale solve (side area overlaps weight 1, pole boundary rings 0.25, mean-log gauge) -> merged flat cloud in pano frame + yaw/pitch rig spec. Payload: points/colors/normals/depths/face_id flat + scales + fit residuals. Measured live on 15520px Osmo file: 10 faces x ~2s, scales 0.87-1.07, pre 3.8% -> post 1.8% residual, 867k splats + 10 rigged cameras. Blender Scan 360 Room builds via the shared mesh builder (+PanoFace attr), rig parent, optional auto-level (works: /level accepts flat clouds). Sign-convention audit fixed three coordinated bugs (CV y-down: Rx pitch signs, equirect elevation sign, pole band sides; rig basis rebuilt right-handed after a det -1 reflection slipped through).
+No /pano endpoint in v2.1 daemon. Prior 10-face prototype pruned in e5e1f8d due to border-bow ghosts; notes below kept for roadmap only, not current behavior.
 
 
-## 2.10 Pano redesign: exclusive wedges + per-face objects (shipped)
+## 2.10 Pano redesign notes (roadmap only, not shipped)
 
 User report: merged 10-face cloud showed 3-4x ghosts. Diagnosis (measured, not guessed): fit medians agreed (post 1.8%) but border pixels disagreed 13-24% -- MoGe bows geometry at 90deg-FOV borders, so overlapping wedges doubled. Fix by construction: daemon scans wide (overlap kept for the scale solve) but outputs exclusive sectors (sides |yaw|<=22.8deg, poles cap 45.5deg; shared/pano.py masks, tested tiling). No rendered overlap exists, so doubling is impossible. Blender builds one object per face (MoGe_Pano_Fxx, camera-local coords) parented to its rig camera, each pair in its own Pano Fxx collection for per-side toggles; rig levels as one assembly; Apply-radius accepts any face object. Boundary handoff stat (post-scale adjacent-column agreement) reported per scan: 7.6% live (border pixels are the most distorted; centers agree ~2%). Live full-pano: 10 faces/collections/cams, 750k splats, world-preserved through parenting (tested).
 

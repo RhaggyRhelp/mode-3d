@@ -25,11 +25,28 @@ This document defines the strict engineering contract for all AI agents and deve
 
 ## 3. Error Handling & Transparency
 * **No Silent Swallowing:**
-  * Bare `except Exception: pass` is forbidden for core operators and network calls.
-  * Report meaningful errors using `self.report({'ERROR'}, ...)` or `self.report({'WARNING'}, ...)`.
+  * Bare `except:` or `except Exception: pass` is forbidden for core operators, network calls, and file I/O.
+  * Report meaningful errors using `self.report({'ERROR'}, ...)`, `self.report({'WARNING'}, ...)`, or logger tracebacks.
 
-## 4. Pre-Commit Verification Gate
+## 4. Blender 5.2 Extension Compliance & Non-Blocking Architecture
+* **Extension Format:**
+  * Extensions must rely strictly on `blender_manifest.toml`. Do not duplicate metadata in legacy `bl_info`.
+  * Declare required permissions in `blender_manifest.toml` (e.g. `[permissions] network = "..."`).
+* **Non-Blocking UI:**
+  * Long-running network or compute operations (such as `/infer`) MUST be implemented as non-blocking modal operators (`invoke()` + worker thread + `TIMER` event handling). Never block Blender's main event loop with synchronous network wait loops.
+* **Process Lifecycle:**
+  * Any background daemon spawned by the extension must register `bpy.app.handlers.exit_pre` to prevent orphaned background processes upon Blender exit.
+
+## 5. Single Source of Truth for Constants
+* Do not duplicate mathematical or protocol constants between `operators.py` and `shared/protocol.py`. Import them or keep them unified.
+
+## 6. Pre-Commit Verification Gate
 * Before committing or finishing any code modification:
-  1. Run unit tests: `python tests/test_protocol.py`
-  2. Run headless Blender verification: `blender --factory-startup --background --python tools/test_headless_blender.py`
-  3. Verify `git status` contains NO `.obj`, `.npz`, `.zip`, `.pyc`, or render images.
+  1. Run unit test suite:
+     * `python tests/test_protocol.py`
+     * `python tests/test_daemon_variants.py`
+     * `python tests/test_floor.py`
+     * `python tests/test_push.py`
+  2. Run hygiene check: `python tools/health_check.py` (all tiers must pass).
+  3. Run headless Blender verification: `blender --factory-startup --background --python tools/test_headless_blender.py`
+  4. Verify `git status` contains NO `.obj`, `.npz`, `.zip`, `.pyc`, or render images.

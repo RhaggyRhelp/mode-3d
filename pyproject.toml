@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mode-3d"
-version = "2.1.0"
+version = "2.2.0"
 description = "MoDe 3D: Metric Monocular Depth & Relighting Studio for Blender"
 readme = "README.md"
 license = { text = "MIT" }

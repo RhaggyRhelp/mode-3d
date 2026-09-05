@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "moge_splat_studio"
-version = "2.1.0"
+version = "2.2.0"
 name = "MoDe 3D Studio"
 tagline = "Metric Monocular Depth & Relighting Studio for Blender (4.2+ / 5.x)"
 maintainer = "MeshHead & Contributors"

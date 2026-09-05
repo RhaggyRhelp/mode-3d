@@ -77,7 +77,7 @@ from shared.tta import unflip_output, fuse_views, resize_grid
 from shared.exif import fov_x_from_exif
 from moge.model import import_model_class_by_version
 
-app = FastAPI(title="MoDe Splat Daemon", version="2.1.0")
+app = FastAPI(title="MoDe Splat Daemon", version="2.2.0")
 MAX_UPLOAD_SIZE = 64 * 1024 * 1024  # 64 MB cap for single source image uploads
 MAX_MAPS_SIZE = 1024 * 1024 * 1024  # 1 GB cap for dense multi-million point numpy archives
 

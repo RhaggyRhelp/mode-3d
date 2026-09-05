@@ -1,0 +1,11 @@
+# Normalize line endings: addon ships to Windows/macOS/Linux, Blender zips must be stable.
+* text=auto
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.bat text eol=crlf
+*.sh text eol=lf
+*.zip binary
+*.npz binary
+*.png binary
+*.jpg binary

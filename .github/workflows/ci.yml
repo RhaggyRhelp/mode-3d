@@ -1,0 +1,37 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU-only test deps
+        run: pip install numpy pytest
+      - name: Compile check
+        run: >-
+          python -m py_compile
+          blender_extension/moge_splat_studio/operators.py
+          blender_extension/moge_splat_studio/cleanup.py
+          blender_extension/moge_splat_studio/__init__.py
+          shared/protocol.py
+          daemon/moge_daemon.py
+          tools/one_click_setup.py
+          tools/install_extension.py
+          tools/health_check.py
+      - name: Pure-numpy unit tests (no GPU, no torch)
+        run: python -m pytest tests/test_protocol.py tests/test_push.py -q
+      - name: Blender extension validate (if Blender installed)
+        run: |
+          if command -v blender >/dev/null 2>&1; then
+            blender --command extension validate ./dist 2>/dev/null || \
+            blender --factory-startup --background --python tools/test_headless_blender.py
+          else
+            echo "Blender not on PATH; skipping Blender-side validation."
+          fi

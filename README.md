@@ -58,11 +58,16 @@ No terminal or command-line knowledge required! Just download/clone this reposit
 * **Linux / macOS:** Double-click or run **`./Start_MoDe_3D.sh`**.
 
 **What the One-Click Launcher does automatically:**
-1. ✅ Sets up an isolated Python virtual environment (`.venv`).
-2. ✅ Installs PyTorch with CUDA hardware acceleration.
-3. ✅ Installs all AI engine requirements and fetches the MoGe model backbone.
+1. ✅ Sets up an isolated Python virtual environment (`.venv`, Python 3.10–3.12).
+2. ✅ Installs PyTorch with CUDA hardware acceleration (`cu128` → `cu121` fallback).
+3. ✅ Installs all AI engine requirements and fetches the MoGe model backbone (shallow clone).
 4. ✅ Automatically packages the Blender extension (`dist/moge_splat_studio.zip`) and **auto-stages it directly into your local Blender installation**!
-5. ✅ Starts the warm GPU AI engine daemon ready for Blender.
+5. ✅ Starts the warm GPU AI engine daemon ready for Blender (skipped if `:8766` already serving).
+
+**Launcher flags** (pass after the bat/sh, e.g. `Start_MoDe_3D.bat --no-launch`):
+* `--no-launch` — install/stage only, do not start the daemon (Blender auto-starts it on Generate).
+* `--check` — verify environment (python, venv, daemon) and exit.
+* `--uninstall` — remove staged extension, configs and Desktop shortcut.
 
 Then in Blender (version 4.2 LTS or 5.x):
 1. Open **Edit > Preferences > Extensions** (or Add-ons).
@@ -83,8 +88,8 @@ If you prefer to configure your environment manually:
 python -m venv .venv
 # Windows: .venv\Scripts\activate | Linux/macOS: source .venv/bin/activate
 
-# 2. Install PyTorch with CUDA
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# 2. Install PyTorch with CUDA (cu128 first, cu121 fallback)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
 # 3. Install daemon dependencies
 pip install -r requirements.txt
@@ -126,15 +131,33 @@ Run the test suite to verify mathematics, protocol definitions, and headless Ble
 
 ```bash
 # Run unit tests (CPU-only, mock data)
-python tests/test_protocol.py
-python tests/test_adaptive_radius.py
-python tests/test_decouple.py
-python tests/test_floor.py
-python tests/test_push.py
+python -m pytest tests/test_protocol.py tests/test_push.py tests/test_floor.py tests/test_daemon_variants.py -q
+
+# Full hygiene + daemon + headless Blender verification
+python tools/health_check.py
 
 # Run headless Blender registration test
 blender --factory-startup --background --python tools/test_headless_blender.py
 ```
+
+> Blender 5.2 note: the extension ships as `blender_manifest.toml` (Extensions platform,
+> no legacy `bl_info`) and declares `[permissions] network` for the localhost `:8766` daemon.
+> Daemon/addon wire protocol is currently **v2** (`protocol` key in `/health` + `.npz`,
+> backward-compatible read of v1 archives).
+
+---
+
+## Troubleshooting
+
+* **Port busy / second engine:** setup detects an existing daemon via `/health` and will not start
+  a duplicate. If Blender reports a port conflict, stop the old engine (`Stop AI Engine` button
+  or `moge_splat.stop_daemon`) and retry.
+* **Firewall prompt:** the daemon binds `127.0.0.1` (localhost) only; allow the local-loopback
+  prompt if Windows asks. No external network access is used.
+* **Giant + 4K stalls:** ViT-G needs ~7GB VRAM and ~10s first-load. Close other GPU apps,
+  or drop to Standard / 1536px Balanced.
+* **Generate freezes (old versions):** v2.2+ scans run as non-blocking modal operators
+  (worker thread + `TIMER`, ESC cancels the UI update). Update the staged extension if scans block.
 
 ---
 

@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install CPU-only test deps
-        run: pip install numpy pytest
+        run: pip install numpy pytest pillow
       - name: Compile check
         run: >-
           python -m py_compile

@@ -53,7 +53,13 @@ def check_environment():
 
 def check_codebase_hygiene():
     print_banner("TIER 2: Codebase Hygiene & Etiquette Audit")
-    forbidden = ["E:\\MOGE", "E:/MOGE", "C:\\Users\\Navneeth"]
+    forbidden = [
+        "E:\\MOGE", "E:/MOGE",
+        "D:\\MOGE", "D:/MOGE",
+        "C:\\MOGE", "C:/MOGE",
+        "C:\\Users\\Navneeth", "C:/Users/Navneeth",
+        "mysterious-archimedes",
+    ]
     violations = []
 
     # Check python and configuration files

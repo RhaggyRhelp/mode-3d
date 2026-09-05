@@ -13,8 +13,9 @@ if %errorlevel% neq 0 (
     if %errorlevel% neq 0 (
         echo.
         echo [ERROR] Python was not detected on your system.
-        echo Please install Python 3.10, 3.11, or 3.12 from https://www.python.org/downloads/
+        echo Please install Python 3.10+ from https://www.python.org/downloads/
         echo (IMPORTANT: Check the box "Add Python to PATH" during installation)
+        echo (Tip: pass --check for a dry run, --no-launch to install without starting)
         echo.
         pause
         exit /b 1

@@ -43,21 +43,22 @@ class PMC(ctypes.Structure):
     ]
 
 def get_process_ram_mb() -> float:
-    try:
-        f = ctypes.windll.psapi.GetProcessMemoryInfo
-        f.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
-        f.restype = wintypes.BOOL
-        pmc = PMC()
-        pmc.cb = ctypes.sizeof(PMC)
-        if f(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
-            return round(pmc.WorkingSetSize / (1024.0 * 1024.0), 2)
-    except Exception:
-        pass
+    if sys.platform == "win32":
+        try:
+            f = ctypes.windll.psapi.GetProcessMemoryInfo
+            f.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+            f.restype = wintypes.BOOL
+            pmc = PMC()
+            pmc.cb = ctypes.sizeof(PMC)
+            if f(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+                return round(pmc.WorkingSetSize / (1024.0 * 1024.0), 2)
+        except Exception:
+            pass
     return 0.0
 
 
-DOWNLOADS_DIR = Path.home() / "Downloads" / "MOGE images and tests"
-OUTPUT_DIR = DOWNLOADS_DIR / "diagnostics_output"
+DOWNLOADS_DIR = Path(os.environ.get("MOGE_TEST_DIR", ROOT / "tests"))
+OUTPUT_DIR = Path(os.environ.get("MOGE_DIAG_OUT", ROOT / "diagnostics_output"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 

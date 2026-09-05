@@ -51,6 +51,48 @@ def find_blender_extension_dir() -> Path | None:
     return best_ver_dir / "extensions" / "user_default" / "moge_splat_studio"
 
 
+def write_persistent_config(stage_dir: Path | None = None):
+    """Write machine-specific paths so Blender can auto-start the daemon without manual setup."""
+    daemon_script = ROOT / "daemon" / "moge_daemon.py"
+    if sys.platform == "win32":
+        venv_py = ROOT / ".venv" / "Scripts" / "python.exe"
+    else:
+        venv_py = ROOT / ".venv" / "bin" / "python"
+
+    py_bin = str(venv_py) if venv_py.exists() else str(venv_py.resolve())
+    daemon_bin = str(daemon_script) if daemon_script.exists() else str(daemon_script.resolve())
+    repo_bin = str(ROOT) if ROOT.exists() else str(ROOT.resolve())
+
+    config_data = {
+        "repo_root": repo_bin,
+        "daemon_script": daemon_bin,
+        "python_bin": py_bin,
+    }
+
+    import json
+
+    # 1. Global user config (~/.mode_3d/config.json)
+    try:
+        global_cfg_dir = Path.home() / ".mode_3d"
+        global_cfg_dir.mkdir(parents=True, exist_ok=True)
+        global_cfg_file = global_cfg_dir / "config.json"
+        with open(global_cfg_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=2)
+        print(f"[CONFIG] Registered persistent environment to: {global_cfg_file}")
+    except Exception as e:
+        print(f"[WARN] Could not write global config: {e}")
+
+    # 2. Staged extension config
+    if stage_dir and stage_dir.exists():
+        try:
+            stage_cfg_file = stage_dir / "mode_3d_config.json"
+            with open(stage_cfg_file, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
+            print(f"[CONFIG] Registered extension config to: {stage_cfg_file}")
+        except Exception as e:
+            print(f"[WARN] Could not write staged config: {e}")
+
+
 def main():
     assert (SRC / "__init__.py").exists(), f"missing {SRC / '__init__.py'}"
     assert (SRC / "blender_manifest.toml").exists(), f"missing {SRC / 'blender_manifest.toml'}"
@@ -61,7 +103,7 @@ def main():
 
     with zipfile.ZipFile(OUT_ZIP, "w", zipfile.ZIP_DEFLATED) as z:
         for p in sorted(SRC.rglob("*")):
-            if p.is_file() and "__pycache__" not in p.parts and not p.name.endswith(".pyc"):
+            if p.is_file() and "__pycache__" not in p.parts and not p.name.endswith(".pyc") and p.name != "mode_3d_config.json":
                 arcname = f"moge_splat_studio/{p.relative_to(SRC).as_posix()}"
                 z.write(p, arcname=arcname)
 
@@ -85,6 +127,9 @@ def main():
     else:
         print("[INFO] Blender extensions directory not automatically detected.")
         print(f"       Install manually in Blender via Edit > Preferences > Extensions > Install from Disk: {OUT_ZIP}")
+
+    # Register persistent config for both global profile and staged extension
+    write_persistent_config(stage)
 
 
 if __name__ == "__main__":

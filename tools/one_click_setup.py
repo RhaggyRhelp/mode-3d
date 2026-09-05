@@ -192,6 +192,8 @@ def check_and_install_dependencies():
         ("cv2", "opencv-python"),
         ("PIL", "pillow"),
         ("torchvision", "torchvision"),
+        ("huggingface_hub", "huggingface-hub"),
+        ("scipy", "scipy"),
         ("flex_gemm", "flex-gemm"),
     )
     req_missing = False

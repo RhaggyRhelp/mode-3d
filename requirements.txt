@@ -10,6 +10,12 @@ pillow>=9.0.0
 torch>=2.1.0
 torchvision>=0.16.0
 
+# MoGe inference-chain deps (imported at model-load time via moge/model/v2.py
+# and moge/utils/geometry_numpy.py; missing ones surface as misleading
+# 'Model version "vX" not found' because MoGe masks ModuleNotFoundError)
+huggingface-hub>=0.20.0
+scipy>=1.8.0
+
 # MoGe Upstream Dependencies (NOT on PyPI under these names — install from git.
 # Pins mirror MoGe's own pyproject and the proven local .venv: do not replace
 # with bare "flex-gemm"/"utils3d", pip can never resolve those.)

@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoDe 3D Studio — Metric Monocular Depth & Splat Relighter for Blender</title>
+    <meta name="description" content="Turn single photographs into metric 3D point-splats, accurate camera projection, and real-time relighting in Blender 4.2+ & 5.x. Zero polygon tearing. Powered by Microsoft MoGe-3.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧊</text></svg>">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        blender: {
+                            DEFAULT: '#E87D0D',
+                            hover: '#FA8D1E',
+                            light: '#FFB067',
+                            dark: '#A35300'
+                        },
+                        brand: {
+                            cyan: '#00F0FF',
+                            purple: '#8B5CF6',
+                            green: '#10B981',
+                            surface: '#0F172A',
+                            card: '#1E293B',
+                            border: '#334155'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Marked.js & Highlight.js for interactive docs -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <style>
+        body {
+            background-color: #090D16;
+            color: #E2E8F0;
+        }
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+        .prose pre {
+            background-color: #0b1120 !important;
+            border: 1px solid #1e293b;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+        .prose code {
+            color: #38bdf8;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9em;
+        }
+        .prose table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            display: block;
+            overflow-x: auto;
+        }
+        .prose th, .prose td {
+            border: 1px solid #334155;
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+        .prose th {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
+        .prose h1, .prose h2, .prose h3 {
+            color: #f8fafc;
+            font-weight: 700;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .prose h1 { font-size: 1.85rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }
+        .prose h2 { font-size: 1.45rem; color: #E87D0D; }
+        .prose h3 { font-size: 1.2rem; color: #38bdf8; }
+        .prose p { margin: 0.85rem 0; line-height: 1.7; color: #cbd5e1; }
+        .prose ul, .prose ol { padding-left: 1.5rem; margin: 0.85rem 0; color: #cbd5e1; }
+        .prose li { margin: 0.35rem 0; }
+        .prose blockquote {
+            border-left: 4px solid #E87D0D;
+            background: rgba(30, 41, 59, 0.4);
+            padding: 0.75rem 1.25rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+            font-style: italic;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased selection:bg-blender selection:text-white">
+
+    <!-- Ambient glow background -->
+    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-blender/10 via-brand-purple/5 to-transparent blur-3xl pointer-events-none -z-10"></div>
+
+    <!-- Navigation Bar -->
+    <nav class="sticky top-0 z-50 backdrop-blur-xl bg-slate-950/80 border-b border-slate-800/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="#" class="flex items-center gap-3 group">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blender to-blender-dark flex items-center justify-center shadow-lg shadow-blender/20 group-hover:scale-105 transition">
+                        <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <span class="font-bold text-lg text-white tracking-tight">MoDe <span class="text-blender">3D</span> Studio</span>
+                        <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-slate-800 text-blender border border-blender/30">v2.2.0</span>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Desktop Nav Links -->
+            <div class="hidden md:flex items-center gap-7 text-sm font-medium text-slate-300">
+                <a href="#features" class="hover:text-white transition">Features</a>
+                <a href="#interactive-sandbox" class="hover:text-brand-cyan transition flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-brand-cyan animate-pulse"></span>
+                    Live Sandbox
+                </a>
+                <a href="#presets" class="hover:text-white transition">Presets</a>
+                <a href="#quickstart" class="hover:text-white transition">Quickstart</a>
+                <a href="#docs" class="hover:text-white transition">User Manual</a>
+                <a href="#philosophy" class="hover:text-white transition">Philosophy</a>
+            </div>
+
+            <!-- CTA Buttons -->
+            <div class="flex items-center gap-3">
+                <a href="https://github.com/RhaggyRhelp/mode-3d" target="_blank" rel="noreferrer" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-lg transition" title="GitHub Repository">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                    </svg>
+                </a>
+                <a href="#quickstart" class="hidden sm:inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-gradient-to-r from-blender to-blender-hover text-white shadow-lg shadow-blender/25 hover:brightness-110 active:scale-95 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Download Addon
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="relative pt-12 pb-20 md:pt-20 md:pb-28 overflow-hidden bg-grid">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+            <!-- Badge -->
+            <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs font-medium text-slate-300 mb-8 backdrop-blur-sm">
+                <span class="flex h-2 w-2 rounded-full bg-emerald-400"></span>
+                <span>Blender 4.2 LTS & 5.2 Compatible</span>
+                <span class="text-slate-600">|</span>
+                <span class="text-blender">Warm MoGe-3 GPU Engine</span>
+            </div>
+
+            <!-- Headline -->
+            <h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-white tracking-tight max-w-5xl mx-auto leading-[1.12]">
+                Single Photo In. <br class="hidden sm:inline">
+                <span class="bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">Metric 3D Splats Out.</span> <br>
+                <span class="bg-gradient-to-r from-blender via-amber-400 to-brand-cyan bg-clip-text text-transparent">Real-Time Relighting</span> in Blender.
+            </h1>
+
+            <p class="mt-6 text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto font-normal leading-relaxed">
+                Connect Blender to a high-speed GPU daemon powered by <strong>Microsoft MoGe-3</strong>.
+                Turn any 2D photograph into millimeter-accurate camera projections, adaptive Gaussian surfels, and a dynamic 2.5D normal-gizmo relighter in <strong class="text-white">~1.5 seconds</strong>.
+            </p>
+
+            <!-- Call to Actions -->
+            <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
+                <a href="https://github.com/RhaggyRhelp/mode-3d/releases" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-blender hover:bg-blender-hover text-white font-semibold text-base shadow-xl shadow-blender/30 hover:scale-[1.02] active:scale-95 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Download Extension v2.2.0 (.zip)
+                </a>
+                <a href="#quickstart" class="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-slate-800/90 hover:bg-slate-750 border border-slate-700 hover:border-slate-600 text-slate-200 font-semibold text-base hover:scale-[1.02] active:scale-95 transition">
+                    <svg class="w-5 h-5 text-brand-cyan" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    One-Click Quickstart
+                </a>
+                <a href="https://github.com/RhaggyRhelp/mode-3d" target="_blank" rel="noreferrer" class="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-transparent hover:bg-slate-800/60 border border-transparent hover:border-slate-700 text-slate-400 hover:text-white text-base font-medium transition">
+                    ⭐ View on GitHub
+                </a>
+            </div>
+
+            <!-- Quick Stats Bar -->
+            <div class="mt-14 max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md">
+                <div class="p-3">
+                    <div class="text-2xl sm:text-3xl font-bold text-white">~1.2s</div>
+                    <div class="text-xs text-slate-400 mt-1 uppercase tracking-wider font-mono">Inference Speed</div>
+                </div>
+                <div class="p-3 border-l border-slate-800">
+                    <div class="text-2xl sm:text-3xl font-bold text-blender">Zero</div>
+                    <div class="text-xs text-slate-400 mt-1 uppercase tracking-wider font-mono">Mesh Tearing</div>
+                </div>
+                <div class="p-3 border-l border-slate-800">
+                    <div class="text-2xl sm:text-3xl font-bold text-brand-cyan">100%</div>
+                    <div class="text-xs text-slate-400 mt-1 uppercase tracking-wider font-mono">Metric Scale</div>
+                </div>
+                <div class="p-3 border-l border-slate-800">
+                    <div class="text-2xl sm:text-3xl font-bold text-emerald-400">5.2 & 4.2</div>
+                    <div class="text-xs text-slate-400 mt-1 uppercase tracking-wider font-mono">Blender Native</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Interactive 2.5D Relight & Splat Sandbox -->
+    <section id="interactive-sandbox" class="py-16 bg-slate-950 border-y border-slate-800/80 relative">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-10">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-cyan/10 border border-brand-cyan/30 text-xs font-mono text-brand-cyan uppercase tracking-wider mb-3">
+                    Interactive Demonstration
+                </div>
+                <h2 class="text-3xl sm:text-4xl font-bold text-white tracking-tight">Experience Live 2.5D Normal Relighting</h2>
+                <p class="mt-3 text-slate-400 text-sm sm:text-base">
+                    Move your mouse or finger across the canvas below. In Blender, MoDe 3D generates this exact Compositor node setup automatically, giving you an interactive 3D normal gizmo to relight any 2D photo in real time.
+                </p>
+            </div>
+
+            <!-- Sandbox Widget -->
+            <div class="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-2xl">
+                <!-- Sandbox Toolbar -->
+                <div class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-mono text-slate-400 uppercase">View Mode:</span>
+                        <div class="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800 text-xs font-medium" id="sandbox-modes">
+                            <button onclick="setSandboxMode('relight')" class="mode-btn px-3 py-1 rounded-md bg-blender text-white font-semibold transition" data-mode="relight">2.5D Relit</button>
+                            <button onclick="setSandboxMode('normals')" class="mode-btn px-3 py-1 rounded-md text-slate-400 hover:text-white transition" data-mode="normals">Surface Normals</button>
+                            <button onclick="setSandboxMode('splats')" class="mode-btn px-3 py-1 rounded-md text-slate-400 hover:text-white transition" data-mode="splats">Point Splats</button>
+                            <button onclick="setSandboxMode('depth')" class="mode-btn px-3 py-1 rounded-md text-slate-400 hover:text-white transition" data-mode="depth">Metric Depth</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+                        <span id="light-pos-indicator">Light: (X: 0.0, Y: 0.0, Z: 1.0)</span>
+                        <span class="hidden sm:inline text-slate-600">|</span>
+                        <span class="hidden sm:inline text-emerald-400">● 60 FPS Real-time</span>
+                    </div>
+                </div>
+
+                <!-- Canvas Container -->
+                <div class="relative w-full h-80 sm:h-[420px] bg-slate-950 cursor-crosshair flex items-center justify-center overflow-hidden" id="canvas-container">
+                    <canvas id="relightCanvas" class="w-full h-full block"></canvas>
+                    <div class="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur-md border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300 pointer-events-none">
+                        💡 Hover & drag anywhere to steer the normal relighter
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Key Features Section -->
+    <section id="features" class="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-16">
+            <h2 class="text-xs font-mono uppercase tracking-widest text-blender font-semibold">Engineered For Visual Fidelity</h2>
+            <p class="mt-2 text-3xl sm:text-4xl font-bold text-white tracking-tight">Why MoDe 3D Studio is Different</p>
+            <p class="mt-4 text-slate-400 text-base">
+                Traditional AI depth tools produce wobbly relative depth and ragged polygon curtains. MoDe 3D combines Microsoft MoGe-3 metric prediction with modern Blender procedural geometry.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Feature 1 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-blender/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-blender/10 border border-blender/20 flex items-center justify-center text-blender mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Metric Point Splats (Zero Faceting)</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Uses Geometry Nodes to instance adaptive point splats or oriented Gaussian surfels. Completely eliminates the jagged polygon curtains and mesh tearing typical of naive triangulated depth meshes.
+                </p>
+            </div>
+
+            <!-- Feature 2 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-brand-cyan/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-brand-cyan/10 border border-brand-cyan/20 flex items-center justify-center text-brand-cyan mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Decoupled Full-Resolution Color</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Runs the AI vision backbone at an optimal token resolution while sampling vertex colors directly from the native 4K+ camera photograph, keeping surface textures razor-sharp.
+                </p>
+            </div>
+
+            <!-- Feature 3 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Instant Ground Grid Levelling</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Detects physical floor planes via signed-normal RANSAC estimation and aligns the room to Blender's ground grid (<code class="text-emerald-300">Z=0</code>) via a non-destructive parent transformation Empty.
+                </p>
+            </div>
+
+            <!-- Feature 4 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">2.5D Compositor Relighter</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Builds a real-time normal-pass relighting graph in Blender's Compositor. Adjust lighting angle, color, and intensity directly with an interactive 3D normal gizmo in the 3D viewport.
+                </p>
+            </div>
+
+            <!-- Feature 5 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-brand-purple/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-brand-purple/10 border border-brand-purple/20 flex items-center justify-center text-brand-purple mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Warm GPU Daemon Architecture</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Keeps MoGe-3 warm in VRAM on a local FastAPI server (<code class="text-brand-purple">:8766</code>). Eliminates cold Python startup overhead, giving you lightning-fast iterations.
+                </p>
+            </div>
+
+            <!-- Feature 6 -->
+            <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-rose-500/40 transition group">
+                <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-5 group-hover:scale-110 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Zero-Accumulation Cache Purger</h3>
+                <p class="text-slate-400 text-sm leading-relaxed">
+                    Auto-cleans previous scans on new runs. Includes a 1-click Purge button inside Blender to scrub both temporary disk arrays and unreferenced Blender mesh/material datablocks.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Presets & Hardware Matrix -->
+    <section id="presets" class="py-20 bg-slate-950 border-y border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center max-w-3xl mx-auto mb-16">
+                <h2 class="text-xs font-mono uppercase tracking-widest text-blender font-semibold">Tuned For Any GPU</h2>
+                <p class="mt-2 text-3xl sm:text-4xl font-bold text-white tracking-tight">Presets & Hardware Requirements</p>
+                <p class="mt-4 text-slate-400">
+                    From sub-second camera previews to dense 4,000,000 point hero scans, pick the preset tuned for your hardware.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Draft -->
+                <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between hover:border-slate-700 transition">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-mono font-bold uppercase text-slate-400">Preset</span>
+                            <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">~0.6s</span>
+                        </div>
+                        <h3 class="text-2xl font-extrabold text-white mb-1">Draft</h3>
+                        <p class="text-xs text-blender font-medium mb-4">6GB – 8GB VRAM</p>
+                        <ul class="text-xs text-slate-300 space-y-2 border-t border-slate-800 pt-4">
+                            <li class="flex items-center gap-2">✓ MoGe-3 ViT-L</li>
+                            <li class="flex items-center gap-2">✓ 1024px Resolution</li>
+                            <li class="flex items-center gap-2">✓ 0 Refine Passes</li>
+                            <li class="flex items-center gap-2 text-slate-400">Instant camera matching & preview</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Balanced -->
+                <div class="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-blender p-6 flex flex-col justify-between relative shadow-xl shadow-blender/10">
+                    <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blender text-white text-[11px] font-bold uppercase tracking-wider">
+                        Recommended
+                    </div>
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-mono font-bold uppercase text-blender">Preset</span>
+                            <span class="text-xs font-mono px-2 py-0.5 rounded bg-blender/20 text-blender font-bold">~1.8s</span>
+                        </div>
+                        <h3 class="text-2xl font-extrabold text-white mb-1">Balanced</h3>
+                        <p class="text-xs text-blender font-medium mb-4">8GB – 12GB VRAM</p>
+                        <ul class="text-xs text-slate-300 space-y-2 border-t border-slate-800 pt-4">
+                            <li class="flex items-center gap-2">✓ MoGe-3 ViT-L</li>
+                            <li class="flex items-center gap-2">✓ 1536px Resolution</li>
+                            <li class="flex items-center gap-2">✓ 2 Refine Passes</li>
+                            <li class="flex items-center gap-2 text-emerald-400 font-medium">Sweet spot of speed & detail</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Quality -->
+                <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between hover:border-slate-700 transition">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-mono font-bold uppercase text-slate-400">Preset</span>
+                            <span class="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">~3.2s</span>
+                        </div>
+                        <h3 class="text-2xl font-extrabold text-white mb-1">Quality</h3>
+                        <p class="text-xs text-blender font-medium mb-4">12GB – 16GB VRAM</p>
+                        <ul class="text-xs text-slate-300 space-y-2 border-t border-slate-800 pt-4">
+                            <li class="flex items-center gap-2">✓ MoGe-3 ViT-L</li>
+                            <li class="flex items-center gap-2">✓ 2448px Resolution</li>
+                            <li class="flex items-center gap-2">✓ 3 Refine Passes</li>
+                            <li class="flex items-center gap-2 text-slate-400">Sharper structural boundaries</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Max Quality -->
+                <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 flex flex-col justify-between hover:border-brand-purple/40 transition">
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-mono font-bold uppercase text-brand-purple">Preset</span>
+                            <span class="text-xs font-mono px-2 py-0.5 rounded bg-brand-purple/20 text-brand-purple font-bold">~5.5s</span>
+                        </div>
+                        <h3 class="text-2xl font-extrabold text-white mb-1">Max Quality</h3>
+                        <p class="text-xs text-brand-purple font-medium mb-4">16GB+ VRAM</p>
+                        <ul class="text-xs text-slate-300 space-y-2 border-t border-slate-800 pt-4">
+                            <li class="flex items-center gap-2">✓ Giant MoGe-3 ViT-G (5GB)</li>
+                            <li class="flex items-center gap-2">✓ 4096px (4K) Backbone</li>
+                            <li class="flex items-center gap-2">✓ 7 Passes + Flip x2 Anti-Jitter</li>
+                            <li class="flex items-center gap-2 text-brand-purple font-medium">4 Million Point Budget</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quickstart Section -->
+    <section id="quickstart" class="py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center max-w-3xl mx-auto mb-16">
+            <h2 class="text-xs font-mono uppercase tracking-widest text-blender font-semibold">Zero-Terminal Onboarding</h2>
+            <p class="mt-2 text-3xl sm:text-4xl font-bold text-white tracking-tight">Get Started In 60 Seconds</p>
+            <p class="mt-4 text-slate-400">
+                No complex terminal commands or manual Python dependencies needed.
+            </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Step 1 -->
+            <div class="relative p-6 rounded-2xl bg-slate-900/70 border border-slate-800">
+                <div class="w-10 h-10 rounded-xl bg-blender text-white font-bold flex items-center justify-center mb-5 text-lg shadow-lg shadow-blender/20">
+                    1
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Run One-Click Setup</h3>
+                <p class="text-slate-400 text-sm leading-relaxed mb-4">
+                    Double-click <strong class="text-white">Start_MoDe_3D.bat</strong> (Windows) or run <strong class="text-white">./Start_MoDe_3D.sh</strong> (Linux/macOS).
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-300">
+                    <code>Start_MoDe_3D.bat</code>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2">Auto-installs PyTorch CUDA, fetches MoGe-3, and stages the extension into Blender.</p>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="relative p-6 rounded-2xl bg-slate-900/70 border border-slate-800">
+                <div class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 text-white font-bold flex items-center justify-center mb-5 text-lg">
+                    2
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Enable in Blender</h3>
+                <p class="text-slate-400 text-sm leading-relaxed mb-4">
+                    Open Blender (4.2+ or 5.x) &rarr; <strong class="text-white">Edit &gt; Preferences &gt; Extensions</strong>.
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-300">
+                    Enable &quot;MoDe 3D Studio&quot;
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2">The extension is already staged! Or drag <code>dist/moge_splat_studio.zip</code> onto Blender.</p>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="relative p-6 rounded-2xl bg-slate-900/70 border border-slate-800">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white font-bold flex items-center justify-center mb-5 text-lg shadow-lg shadow-emerald-500/20">
+                    3
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Generate 3D Splats</h3>
+                <p class="text-slate-400 text-sm leading-relaxed mb-4">
+                    Press <strong class="text-white">N</strong> in the 3D Viewport to open the sidebar tab &rarr; pick your photo &rarr; click <strong class="text-white">Generate 3D Splats</strong>!
+                </p>
+                <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-emerald-400">
+                    &rarr; Metric Camera, Splats &amp; Relight ready in ~1.5s
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Documentation Hub (Manual + Philosophy + Citations) -->
+    <section id="docs" class="py-20 bg-slate-950 border-t border-slate-800">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-wrap items-center justify-between gap-4 mb-8 border-b border-slate-800 pb-6">
+                <div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-white">Documentation &amp; Philosophy</h2>
+                    <p class="text-slate-400 text-sm mt-1">Full offline reference, Ian Hubert flow state design, and academic citations.</p>
+                </div>
+
+                <!-- Tab Switchers -->
+                <div class="flex items-center rounded-xl bg-slate-900 p-1 border border-slate-800 text-xs font-semibold">
+                    <button onclick="switchDocTab('manual')" id="tab-manual" class="px-4 py-2 rounded-lg bg-blender text-white transition">User Manual</button>
+                    <button onclick="switchDocTab('philosophy')" id="tab-philosophy" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">Philosophy</button>
+                    <button onclick="switchDocTab('citations')" id="tab-citations" class="px-4 py-2 rounded-lg text-slate-400 hover:text-white transition">Citations</button>
+                </div>
+            </div>
+
+            <!-- Docs Viewer Container -->
+            <div class="rounded-2xl bg-slate-900/80 border border-slate-800 p-6 sm:p-10 shadow-2xl">
+                <!-- Search bar for docs -->
+                <div class="mb-8 flex items-center gap-3 bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" id="docSearch" placeholder="Search documentation (e.g., FOV, RANSAC, daemon, relighting)..." oninput="filterDocContent()" class="bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none w-full">
+                </div>
+
+                <!-- Prose Container -->
+                <article id="docContent" class="prose max-w-none text-slate-300">
+                    <!-- Rendered by Marked.js on page load -->
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 bg-slate-950 border-t border-slate-800/80 text-sm text-slate-400">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-blender flex items-center justify-center text-white font-bold text-xs">
+                    M
+                </div>
+                <span class="text-slate-300 font-semibold">MoDe 3D Studio</span>
+                <span class="text-slate-600">|</span>
+                <span class="text-xs">Licensed under <a href="https://github.com/RhaggyRhelp/mode-3d/blob/main/LICENSE" class="text-slate-300 underline">MIT</a></span>
+            </div>
+
+            <div class="flex items-center gap-6 text-xs font-medium">
+                <a href="https://github.com/RhaggyRhelp/mode-3d" target="_blank" rel="noreferrer" class="hover:text-white transition">GitHub Repo</a>
+                <a href="https://www.blender.org/" target="_blank" rel="noreferrer" class="hover:text-white transition">Blender.org</a>
+                <a href="https://github.com/microsoft/MoGe" target="_blank" rel="noreferrer" class="hover:text-white transition">Microsoft MoGe</a>
+                <a href="#quickstart" class="text-blender hover:underline">Download Latest</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Interactive Canvas & Docs Script -->
+    <script>
+        // Embedded Docs Data
+        const rawDocs = {
+            manual: "# MoGe Splat Studio \u2014 Complete User Manual & Settings Guide\n\n> **Quick Summary:** MoGe Splat Studio turns single photos into metric 3D point-splats and camera setups inside Blender using a fast, warm GPU daemon. This guide details every setting, toggle, and button so you know exactly what to change, how much it impacts quality and speed, and which option fits your workflow.\n\n---\n\n## Table of Contents\n1. [The 30-Second \"Cheat Sheet\" (Which Preset for What?)](#1-the-30-second-cheat-sheet)\n2. [Section 1: Source Image & Daemon Controls](#2-source-image--daemon-controls)\n3. [Section 2: Quality & Inference Settings](#3-quality--inference-settings)\n4. [Section 3: Surface & Masking Modes](#4-surface--masking-modes)\n5. [Section 4: Field of View (FOV) & Camera Settings](#5-field-of-view-fov--camera-settings)\n6. [Section 5: Dot Size & Viewport Display](#6-dot-size--viewport-display)\n7. [Section 6: 2.5D Compositor Relighter](#7-25d-compositor-relighter)\n8. [Section 7: Grid Levelling (Aligning Floor to Z=0)](#8-grid-levelling-aligning-floor-to-z0)\n9. [Section 8: Diagnostic Metadata Viewer](#9-diagnostic-metadata-viewer)\n10. [Troubleshooting Visual Artifacts](#10-troubleshooting-visual-artifacts)\n\n---\n\n## 1. The 30-Second \"Cheat Sheet\"\n\nIf you don't want to tweak 15 sliders, pick one of these four setups:\n\n| Goal / Scenario | Recommended Settings | Scan Time | What You Get |\n| :--- | :--- | :--- | :--- |\n| **Rapid Previews & Camera Matching** | Preset: **Draft**<br>Surface: **Seamless** | **~0.6s** | Fast sub-second camera FOV alignment and rough depth shapes. Great for quickly checking if a photo works. |\n| **Interior Rooms & Architecture** | Preset: **Balanced**<br>Surface: **Seamless**<br>Auto Level: **Level floor (auto)** | **~1.5 \u2013 2.0s** | Watertight walls and floors without holes. Floor aligned cleanly to the Blender ground grid ($Z=0$). |\n| **Characters, Props & Furniture** | Preset: **Balanced** or **Quality**<br>Surface: **Split islands**<br>Mask sky/void: **ON** | **~2.0 \u2013 3.2s** | Cuts out background \"spiderweb curtains\" and keeps edges clean and isolated. |\n| **Hero Shots & Hairline Details** | Preset: **Quality**<br>TTA Ensemble: **Flip x2**<br>Full-Res Color: **ON** | **~4.0 \u2013 5.5s** | Denoised, jitter-free geometric depth with native camera texture sharpness. |\n| **Extreme All-Out Max Quality** | Preset: **Max Quality (Giant 4K)**<br>Surface: **Seamless** or **Split islands** | **~5.5 \u2013 7.0s** | **The Ultimate Quality Bundle**: Giant ViT-G (5GB) backbone + 4096px resolution + 7 Refine passes + Flip x2 Anti-Jitter + 4,000,000 point budget! |\n\n---\n\n## 2. Simple Mode vs. Advanced Mode\n\nAt the very top of the sidebar panel, a segmented switcher lets you toggle between:\n\n* **Simple Mode (Default):** Streamlined, clutter-free workflow. Exposes only the essential controls: Pick Image, Preset, Surface Mode, and the large **Scan -> Splats** button. Once scanned, quick one-click shortcuts appear for **Camera**, **Level Floor**, and **Relight**.\n* **Advanced Mode:** Unfolds the full studio interface with all fine-grained sliders, daemon management, dot-size multipliers, point budgets up to 12M, and real-time metadata diagnostics.\n\n---\n\n## 3. Source Image & Daemon Controls\n\nLocated at the very top of the **MoGe Splat** sidebar panel.\n\n### Source Image (`import_path`)\n* **What it does:** Selects the input image file (.jpg, .png, .webp, .bmp, .tiff).\n* **What changing it does:** Changes the base image used for 3D reconstruction.\n* **Pro-tip:** If your photo came from a modern smartphone or DSLR, keep the raw file! MoGe Splat Studio automatically extracts camera EXIF focal lengths to compute physically accurate camera FOV.\n\n---\n\n### Check GPU Daemon (`moge_splat.ensure_daemon`)\n* **What it does:** Pings the background Python AI server (`http://127.0.0.1:8766/health`) to confirm that the GPU is ready and shows which model checkpoint is loaded in VRAM.\n* **When to use:** Click if you want to verify that your GPU is online before running a large batch.\n\n---\n\n### Auto-start Daemon (`daemon_autostart`)\n* **What it does:** When enabled (**ON** by default), clicking **Scan -> Splats** will automatically launch the MoGe daemon in the background if it is not already running.\n* **Impact:** \n  * **First scan after boot:** Takes ~10 seconds while the model loads into VRAM.\n  * **Subsequent scans:** Instant warm response (~1\u20132 seconds).\n* **When to change:** Keep **ON**. Only turn OFF if you prefer managing the daemon manually via `launch_daemon.bat` or a remote server.\n\n---\n\n### Stop Daemon (`moge_splat.stop_daemon`)\n* **What it does:** Terminates the background Python daemon process and immediately frees up GPU VRAM (saving ~2.5 GB \u2013 7.3 GB of video memory).\n* **When to use:** When you are done scanning and want all your VRAM back for heavy Blender rendering, simulations, or gaming.\n\n---\n\n## 3. Quality & Inference Settings\n\nThese controls govern the neural network inference pass that extracts 3D depth and surface normals.\n\n```\n+-------------------------------------------------------------------------------+\n| SETTINGS HIERARCHY:                                                           |\n| Preset (Macro) ---> Resolution (1536/2448/4096) + Iterations (0-7) + Detail   |\n+-------------------------------------------------------------------------------+\n```\n\n### Preset (`preset`)\n* **What it does:** Pre-configures all underlying neural network parameters with tested, optimal ratios.\n* **Options:**\n  * **Draft (Fast <1.0s):** Uses **MoGe-3 Standard**, Low feature separation, 0 iterations, 1024px resolution.\n    * *Best for:* Sub-second rapid thumbnail scrub, checking camera placement without model swapping.\n  * **Balanced (Recommended):** Uses **MoGe-3 Standard**, High feature separation, 2 iterations, 1536px resolution.\n    * *Best for:* 90% of real work. Balances crisp geometry, clean surface boundaries, and ~1.8s speed.\n  * **Quality (2.5K Crisp):** Uses **MoGe-3 Standard**, High feature separation, 3 iterations, 2448px resolution.\n    * *Best for:* High-resolution scenes where fine edges and micro-creases matter (~3.2s).\n  * **Max Quality (4K Hero):** All-out hero quality bundle. Uses **MoGe-3 Giant (7GB)**, 4096px resolution, 7 iterations, 2x Anti-Jitter, and 4M point budget.\n    * *Best for:* Ultimate hero renders where every hairline crease, wire, and micro-silhouette counts.\n  * **Custom:** Automatically activates if you manually alter any fine-grained settings.\n\n---\n\n### Geometry Iterations (`refine_steps`)\n* **What it does:** The number of iterative 3D self-refinement passes MoGe-3 performs on its own output field.\n* **Range:** `0` to `7` (Default: `2`, Maximum: `7`).\n* **Impact on Output:**\n  * **0:** Raw draft shape (fastest, but may exhibit slight curvature or wavy walls).\n  * **1 \u2013 2 (Sweet Spot):** Flattens walls, straightens structural perspective lines, and eliminates surface ripples.\n  * **3:** Extra crispness on complex occlusion boundaries and thin silhouettes.\n  * **4 \u2013 7 (Max Convergence):** Maximum geometric alignment. Straightens long architecture lines and sharpens micro-silhouettes to perfection.\n* **Recommendation:** **2** for general work; **3** for hero props; **7** for Max Quality.\n\n---\n\n### Scan Resolution (`max_size`)\n* **What it does:** Long-edge pixel dimension for 3D point generation.\n* **Quick Tiers:**\n  * **1536 (Standard):** Fast transfer (~2s), lightweight memory footprint, smooth viewport.\n  * **2448 (2.5K Sharp):** High-density intermediate tier (~3.5s). Native 8MP photo sensor ratio, crisp micro-surfaces.\n  * **4096 (4K Hero):** Native 4K dense point grid. Handled smoothly on RTX 4070 Ti SUPER 16GB.\n  * *(Custom input allows any value between 512 and 4096 px).*\n* **Recommendation:** Keep at **1536** for general staging; switch to **2448** or **4096** for hero renders. Note that with *High-Res Source Colors* enabled, texture colors remain 100% sharp from your original photo even at 1536.\n\n---\n\n### Feature Separation (`resolution_level`)\n* **What it does:** Controls how finely the AI detects small geometric structures (internally controls Vision Transformer token density).\n* **Options:**\n  * **Low:** Fewest tokens, fastest, uses lowest GPU memory. Surfaces are slightly rounded.\n  * **Medium:** Balanced token density.\n  * **High:** Sharpest geometric creases, separating thin objects (table legs, wires, window frames) as distinct 3D geometry rather than blending them into the wall.\n* **Recommendation:** Keep on **High** unless running on a low-VRAM GPU (<8 GB).\n\n---\n\n### Anti-Jitter / Denoise Passes (`tta_mode`)\n* **What it does:** Multi-pass inference (Test-Time Augmentation). Passes transformed copies of the image through the AI and fuses depth maps to cancel camera sensor noise.\n* **Options:**\n  * **Off (Single Pass):** Standard single-shot inference (~2s).\n  * **2x Mirror Pass (~2x time):** Runs the image normal and horizontally flipped, then averages the two. Cancels out camera bias and cuts random depth jitter in half.\n  * **3x Clean Pass (~3x time):** Runs normal, flipped, and an 80% downscaled view. Uses median-voting across all 3 to discard single-pass depth glitches.\n* **Recommendation:** Leave **Off** while staging; switch to **2x Mirror** for hero renders.\n\n---\n\n## 4. Surface & Masking Modes\n\nControls how background skies, edge disocclusions, and object boundaries are filtered.\n\n```\nSEAMLESS                     MASKED                       SPLIT ISLANDS\n[ Continuous mesh ]          [ Sky / Void Deleted ]       [ Objects Split Apart ]\n  ___________                  ___________                  _____     _____\n /           \\                /           \\                /     \\   /     \\\n/  Foreground \\              /  Foreground \\              | Obj A | | Obj B |\n|  + Sky Wall |              |  (No Sky)   |              \\_____/   \\_____/\n\\_____________/              \\_____________/\n(Watertight, 0 holes)       (Cut horizon/void)            (No background curtains)\n```\n\n### Surface Mode (`surface_mode`)\n\n| Mode | What it does | Visual Result | Best For |\n| :--- | :--- | :--- | :--- |\n| **Seamless (0 holes)** | Retains every valid point without deleting edges. | A completely solid, watertight sheet. Backgrounds connect smoothly to the foreground. | **Indoor rooms, architectural interiors, cave walls, closed environments.** |\n| **Masked** | Uses AI segmentation to drop sky and infinite depth voids. | Foreground geometry stays solid; sky and distant horizons are removed. | **Outdoor buildings, street scenes with open skies.** |\n| **Split Islands** | Examines depth jumps and normal angle shifts ($>5^\\circ$) and severs connecting points. | Objects become isolated floating 3D elements without \"stretched spiderweb skin\" connecting them to the background. | **Props, isolated products, vehicles, character figures.** |\n\n### Mask sky/void (`apply_mask`)\n* *Only visible when Surface is set to **Split Islands**.*\n* **What it does:** When checked, cuts out both sharp connecting edges *and* the sky/void regions.\n\n---\n\n## 5. Field of View (FOV) & Camera Settings\n\n### Override FOV (`use_custom_fov`) & HFOV deg (`custom_fov`)\n* **What it does:** By default, MoGe automatically reads your camera's EXIF focal length or estimates the FOV using deep learning. Checking this box forces the AI to construct the 3D scene using your exact horizontal field of view.\n* **Why it matters:** In MoGe, your custom FOV is passed directly *into* the neural network before depth calculation. It does not simply stretch the camera in Blender\u2014it physically improves depth scale accuracy!\n* **Range:** `5.0\u00b0` (Telephoto / Zoom lens) to `160.0\u00b0` (Extreme Fisheye).\n* **When to use:**\n  * When you know the focal length (e.g., you rendered a 3D plate at 50mm or shot on a 24mm prime lens).\n  * When the automatic FOV estimate feels too flat or overly distorted.\n\n---\n\n## 6. Dot Size & Viewport Display\n\nFound inside collapsible box **3. Dot size & display**.\n\n> [!NOTE]\n> MoGe Splat Studio generates **Blender Geometry Nodes Point Sprites** (shaded in real-time by Eevee), NOT un-editable 3D Gaussian Splatting blobs. You can edit them, sculpt them, or light them like normal Blender geometry.\n\n### Uniform radius m (`splat_radius`)\n* **What it does:**\n  * **If set to `0.0` (Default):** Activates **Adaptive Per-Point Radius**. Every point gets a custom radius based on its camera distance: points close to the camera become tiny and sharp, while points far away expand to fill gaps.\n  * **If set to `> 0.0` (e.g. `0.015`):** Forces every single point in the cloud to be identical in size (in meters).\n* **Impact:** Setting this to a fixed number makes distant scenery look like a sparse grid of holes (\"screen door effect\"). Keep it at `0.0`.\n\n---\n\n### Adaptive scale (`radius_scale`)\n* **What it does:** A multiplier applied to the adaptive radius calculation.\n* **Range:** `0.2` to `3.0` (Default: `1.0`).\n* **Visual Result:**\n  * **Increase (e.g. 1.3 \u2013 1.6):** Closes holes and gaps in the far distance, creating a smoother solid look.\n  * **Decrease (e.g. 0.6 \u2013 0.8):** Makes points sharper and smaller, revealing ultra-fine micro-structures at the cost of tiny pinholes between points.\n* **How to update:** Change this slider, then click **Apply radius** to update the viewport immediately without rescanning!\n\n---\n\n### Point budget (`point_budget`)\n* **What it does:** The maximum number of points imported into Blender.\n* **Default:** `1,200,000` points (Range: 50,000 to 12,000,000).\n* **Mechanism:** If the AI outputs 8\u201311 million points (e.g. from a 4K scan), the add-on applies an even uniform stride downsampler (e.g. taking every 2nd or 3rd point) to meet your budget without clustering or destroying depth structure.\n* **Impact on Viewport & Performance:**\n  * **1,200,000:** Smooth 60+ FPS navigation in Eevee on RTX 3070/4070+.\n  * **4,000,000:** \"Retina sweet spot\". Point density matches native 4K displays. Smooth 45\u201360 FPS navigation.\n  * **8,000,000 \u2013 12,000,000:** Extreme density for sub-pixel macro inspection. Viewport navigation becomes heavier (~15\u201325 FPS) and memory overhead increases (~800MB\u20131GB RAM per mesh).\n\n---\n\n### Full-res color (`fullres_color`)\n* **What it does:** **Decoupled High-Resolution Texturing**. Instead of coloring points from the downscaled AI image (1536px), Blender samples the RGB vertex colors directly from your native high-resolution image file on disk (e.g., 4K, 8K, or 12K photo).\n* **Impact on Output:** **MASSIVE VISUAL UPGRADE**. Increases texture sharpness by up to 5x with **zero additional GPU VRAM cost**.\n* **Recommendation:** Always keep **ON**.\n\n---\n\n### Apply radius Button (`moge_splat.apply_radius`)\n* **What it does:** Recalculates and rewrites the `SplatRadius` point attribute across your selected mesh.\n* **Why it is useful:** It updates your dot sizes **instantly** in the viewport without needing to wait for a new AI scan.\n\n---\n\n### View through camera Button (`moge_splat.view_camera`)\n* **What it does:** Snaps the active 3D viewport directly to the generated `MoGe_Camera`, switches the viewport shading to **Material Preview**, and activates camera framing with a 100% black passepartout mask.\n\n---\n\n## 7. 2.5D Compositor Relighter\n\nFound inside collapsible box **4. 2.5D relight (compositor)**.\n\n### Setup relighter Button (`moge_splat.setup_relight`)\n* **What it does:** Automatically builds a complete 2.5D diffuse relighting node tree in Blender\u2019s Compositor using the camera plate and the AI-generated 3D surface normal map.\n* **How to use it:**\n  1. Click **Setup relighter**.\n  2. Switch to Blender\u2019s **Compositing** workspace (or open the Node Editor).\n  3. Look for the node labeled **Light Direction** (the sphere gizmo).\n  4. Click and drag the sphere normal gizmo to dynamically move a simulated directional light across the 2D photo!\n  5. Tweak **Key Light Color**, **Light Intensity**, and **Ambient Fill** nodes to adjust mood and fill brightness.\n\n---\n\n## 8. Grid Levelling (Aligning Floor to Z=0)\n\nFound inside box **5. Grid level**.\n\nWhen scanning from a handheld photo, the camera is often tilted. This means the floor in Blender ends up slanted at an awkward angle. The Levelling tools solve this by parenting the scan to a helper empty (`MoGe_Level`) and rotating it so the floor rests flat at $Z = 0.0$.\n\n```\nRAW SCAN (Slanted floor)             AFTER LEVELLING (Floor at Z=0)\n       \\                                       |\n        \\   [Slanted Room]                     |   [Leveled Room]\n_________\\_________________             _______|__________________ (Z = 0 Ground)\n```\n\n### Level floor (auto) (`moge_splat.level_auto`)\n* **What it does:** Sends the cached scan maps to a RANSAC plane-fitting algorithm. It detects the primary floor plane (ignoring ceilings and walls) and automatically levels the scene.\n* **Best for:** Clear indoor floors, streets, sidewalks, and flat ground.\n\n---\n\n### Add markers (`moge_splat.level_markers_add`)\n* **What it does:** Spawns three helper empties (`MoGe_Floor_A`, `MoGe_Floor_B`, `MoGe_Floor_C`) in front of the camera.\n* **When to use:** When the automatic leveler is confused (e.g. cluttered rooms with beds and rugs).\n\n---\n\n### Level to markers (`moge_splat.level_markers_apply`)\n* **What it does:** Calculates the geometric plane defined by the three markers and rotates the entire scene so that plane becomes flat at $Z = 0$.\n* **How to use:**\n  1. Click **Add markers**.\n  2. In the 3D viewport, grab and move markers A, B, and C so they sit on three distinct spots on the floor (forming a triangle).\n  3. Click **Level to markers**.\n\n---\n\n### Remove levelling (`moge_splat.level_remove`)\n* **What it does:** Deletes the `MoGe_Level` helper empty and un-parents the camera and splats, restoring the scene back to its raw camera-relative coordinates.\n* **Safety feature:** It never destroys or degrades your raw geometric point data.\n\n---\n\n## 9. Diagnostic Metadata Viewer\n\nFound inside collapsible box **6. Scan metadata**.\n\nProvides an instant technical audit of the last scan:\n* **Image:** Filename, native dimensions vs inference dimensions.\n* **Model:** Checkpoint version (`v3/vitl` or `v3/vitg`) and TTA status.\n* **FOV:** Shows horizontal x vertical degrees, plus the source (`exif`, `manual`, or `model`).\n* **Depth:** Physical metric range in meters (e.g., `0.42m .. 18.50m`).\n* **Splats:** Point count and texture color source (e.g., `1,142,850 | native 4032x3024`).\n* **Radius:** Details whether uniform or adaptive sizing was applied.\n* **Level:** Displays floor tilt compensation angle (e.g., `tilt was 8.4deg | floor at z=0`).\n\n---\n\n## 10. Troubleshooting Visual Artifacts\n\n### 1. \"The background has giant stretched curtains connecting it to the foreground\"\n* **Cause:** *Surface Mode* is set to **Seamless**, which preserves every continuous triangle/point regardless of depth distance.\n* **Fix:** Change *Surface Mode* to **Split Islands**. This cuts points across sharp depth edges.\n\n---\n\n### 2. \"The sky turned into a solid geometric wall\"\n* **Cause:** The sky in the photo was recognized as far geometry.\n* **Fix:** Set *Surface Mode* to **Masked** or **Split Islands** with **Mask sky/void** enabled.\n\n---\n\n### 3. \"The scene looks like a screen-door mesh with holes between points\"\n* **Cause:** Either *Uniform radius* is set to a fixed small number, or *Adaptive scale* is too low.\n* **Fix:**\n  1. Ensure **Uniform m** is set to `0.0` (activates adaptive scaling).\n  2. Increase **Adaptive scale** from `1.0` to `1.3` or `1.5`.\n  3. Click **Apply radius**.\n\n---\n\n### 4. \"Points look like huge blurry blobs up close\"\n* **Cause:** *Adaptive scale* is set too high, or a fixed uniform radius is too large.\n* **Fix:** Lower **Adaptive scale** to `0.7` or `0.8` and click **Apply radius**.\n\n---\n\n### 5. \"Blender 3D Viewport is lagging or dropping frames\"\n* **Cause:** Point budget is too high for your current viewport settings.\n* **Fix:** Set **Point budget** to `800,000` or `1,000,000`, and click **Scan -> Splats** again.\n\n---\n\n### 6. \"The Relighter compositing output is completely black\"\n* **Cause:** An older blend file was loaded, or nodes need an update.\n* **Fix:** Re-click **Setup relighter** in Box 4. MoGe Splat Studio will auto-detect Blender 5.2 unified color sockets and bind the correct Image interface.\n",
+            philosophy: "# The Philosophy of MoGe Splat Studio\n\n> *\"Do it in a fast, practical way that might look unconventional to a traditional artist, but gives you the most visual fidelity for the least amount of friction \u2014 and above all, keeps you in your creative flow state.\"*\n\n---\n\n## 1. The Ian Hubert Approach: High Quality, Low Friction\n\nI am a huge fan of Ian Hubert. His work in Blender really opened my eyes to how far simply projecting a real-life photograph can go in terms of visual quality.\n\nIn traditional 3D pipelines, creating an asset usually means starting from scratch: building subdivision topology with clean edge loops, unwrapping complex UV seams, hand-authoring multiple PBR texture maps, and fine-tuning micro-details. \n\nThe projection approach flips that around: you take a photograph of a real wall, a building, or an industrial machine, project it onto simple geometry, model a little bit around the key features, and tweak the shader maps. Because real-world photography already contains natural weathering, lighting nuances, and surface character, you get a cinematic asset in a fraction of the time.\n\nTo a 3D purist, this workflow might look a bit \"janky\" or sloppy. But what it actually does is deliver the highest possible quality for the least amount of busywork. More importantly, **it preserves the flow state**. You don't get lost in technicalities or microscopic modeling details, and you keep your eye on the bigger picture\u2014the composition, lighting, and overall scene.\n\n---\n\n## 2. The Bottleneck: Positioning Objects in 3D Space\n\nWhile camera projection is an incredible technique, getting it set up traditionally comes with a big point of friction: **getting the 3D positioning right**.\n\nUsually, when you try to model a room or a piece of equipment from a photo:\n1. You bring the image into Blender (or an external tool like fSpy).\n2. You align your perspective axes and vanishing points.\n3. You match the camera and drop in a plane.\n4. **You have to figure out where that plane actually sits in 3D space.**\n\nBecause a single photograph is flat, a wall 30 meters away can look identical to a small box 1 meter away. You end up constantly orbiting out of the camera view into perspective, nudging planes back and forth along the depth axis, jumping back to the camera view to check the match, and tweaking proportions. \n\nThat 3D space positioning is painstaking, and it\u2019s the exact kind of tedious back-and-forth that interrupts your momentum before you've even blocked out the model.\n\n---\n\n## 3. The Search for Reliable Monocular Depth\n\nHaving an automated depth system powered by monocular depth estimation was something I had been looking forward to ever since AI vision models started appearing. The idea was simple: feed in an image, get an instant depth map, and eliminate the depth-guessing game entirely.\n\nOver the years, I experimented with various models as they were released\u2014MiDaS, Depth Anything, Depth Anything V2, Marigold, and others. While they were impressive technical achievements, they weren't quite ready for a practical modeling workflow:\n* Most models produce **relative depth** rather than metric measurements. Items and objects aren't scaled to the real world, leaving building facades and props at arbitrary relative distances.\n* Depth maps often had blurry, inconsistent transitions along edges, creating distorted shapes.\n* You still had to manually adjust, scale, and eyeball where things belonged in Blender's 3D grid.\n\n---\n\n## 4. Enter MoGe-3: Getting to Real-World Metric Scale\n\nThat changed when **Microsoft MoGe-3** was released.\n\nWhen I tried MoGe-3 for the first time, I saw that it could place buildings, rooms, and objects at approximately the right distances you would expect to see in the real world. Unlike previous methods, MoGe-3 predicts:\n1. **Metric 3D coordinates** grounded in physical meters.\n2. **Surface normals** directly derived from the scene geometry.\n3. **Camera intrinsics**, including accurate Field of View (FOV) and focal length.\n\nIt immediately clicked: this is the missing piece. With MoGe-3, you can generate a point cloud from an image in seconds, immediately see where everything sits in 3D space, block out your model with simple primitives, project the original photo, and get your asset out.\n\n---\n\n## 5. The Workflow: Instant 3D Scaffolding for Rapid Blockout\n\nThis is the entire reason **MoDe 3D Studio** (MoGe Splat Studio) was built.\n\nInstead of wrestling with perspective matching and guessing depth positions, the workflow is fast and straightforward:\n\n```\n[ Photograph ]\n      \u2502\n      \u25bc (1\u20132 seconds via warm GPU Daemon)\n[ Aligned Metric Camera + 3D Point-Splat Scaffold ]\n      \u2502\n      \u25bc (In Blender Viewport)\n[ Quick Low-Poly Blockout Snapping to Points ]\n      \u2502\n      \u25bc (Project Original Image onto Geometry)\n[ Production-Ready 3D Asset ]\n```\n\n1. **Import an image.** The warm GPU daemon processes it in ~1\u20132 seconds.\n2. **Instant spatial reference.** Blender gets an aligned camera and a metric point-splat cloud that maps out the scene's real 3D layout.\n3. **Block out cleanly.** Instead of modeling into empty space, you drop in basic planes and boxes, using the point cloud as a visual scaffold to see exactly where surfaces, edges, and openings are.\n4. **Project and finish.** Project the original photo back onto the blocked geometry, add bevels or shader tweaks, and your asset is ready.\n\n---\n\n## 6. Why Not Auto-Meshing? (The Noise Problem vs. Clean Geometry)\n\nA natural question is: *If MoGe-3 produces an accurate point cloud, why not just automatically convert it into a final mesh and project the image directly onto that, without any modeling at all?*\n\nWhile that would be ideal, there are practical reasons why it doesn't work well yet:\n1. **Point clouds are noisy:** Even with a high-accuracy model like MoGe-3, monocular point clouds still contain minor edge noise, depth fringes, and missing back-faces.\n2. **Meshing algorithms produce undulating surfaces:** Converting point clouds into meshes (using techniques like Poisson reconstruction) is computationally heavy and produces wavy, bumpy surfaces. Architectural walls, floors, and mechanical equipment have flat, sharp, planar surfaces\u2014not organic, bumpy ones.\n3. **Clean geometry matters:** A quick 5-minute blockout using simple planes gives you razor-sharp edges, lightweight geometry, and clean surfaces that are easy to edit and render.\n\nIn the future, exploring techniques for clean, planar-aware mesh generation would be great. But for now, using the point cloud as a rough 3D outline to guide quick modeling hits the sweet spot between speed and asset quality.\n\n---\n\n## 7. Core Principles\n\nEvery feature in MoDe 3D Studio is built around a few practical principles:\n\n1. **Speed is essential:** By using a warm GPU daemon, scans take 1\u20132 seconds. Fast turnaround keeps you experimenting rather than waiting.\n2. **Preserve the flow state:** Remove tedious steps like manual camera matching and depth guessing so you can stay focused on creating.\n3. **Scaffolding over automation:** Provide accurate spatial references and camera alignment, letting the artist choose how much or how little to model.\n4. **Practical results over perfectionism:** If a fast, simple projection method gives you great visual quality on screen, that's what matters.\n\n---\n\n*Built for 3D artists, indie VFX creators, and anyone who wants to build worlds faster without getting bogged down in repetitive technical setup.*\n",
+            citations: "# Citations and Acknowledgements\n\nMoGe Splat Studio builds upon foundational research in monocular geometry estimation developed by Microsoft Research and HKUST.\n\nIf you use MoGe Splat Studio in academic research or professional productions, please cite the upstream MoGe papers:\n\n```bibtex\n@article{wang2024moge,\n  title   = {MoGe: Unlocking Open-Domain Monocular Geometry Estimation},\n  author  = {Wang, Ruicheng and Qian, Shengyi and Fouhey, David and Dai, Angela and Wang, Xiaolong},\n  journal = {IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},\n  year    = {2024}\n}\n\n@article{wang2024moge2,\n  title   = {MoGe-2: Accurate Metric Monocular Geometry Estimation},\n  author  = {Wang, Ruicheng and Qian, Shengyi and Dai, Angela and Wang, Xiaolong},\n  journal = {Advances in Neural Information Processing Systems (NeurIPS)},\n  year    = {2024}\n}\n\n@article{wang2025moge3,\n  title   = {MoGe-3: Self-Guided Sparse Volumetric Refinement for Fine-Grained Monocular 3D},\n  author  = {Wang, Ruicheng and Qian, Shengyi and Dai, Angela and Wang, Xiaolong},\n  journal = {arXiv preprint},\n  year    = {2025}\n}\n```\n\n## Upstream Repository\n* **Official MoGe Repository:** [https://github.com/microsoft/MoGe](https://github.com/microsoft/MoGe)\n* **Pretrained Weights:** Hosted on HuggingFace Hub under [Ruicheng](https://huggingface.co/Ruicheng)\n\n## Open Source Libraries Used\n* **Blender**: 3D Creation Suite ([blender.org](https://www.blender.org/))\n* **PyTorch**: Deep learning framework ([pytorch.org](https://pytorch.org/))\n* **FastAPI & Uvicorn**: High-performance asynchronous API server ([fastapi.tiangolo.com](https://fastapi.tiangolo.com/))\n* **FlexGEMM**: Fast attention GEMM operator\n* **Utils3D**: 3D geometric operations library\n"
+        };
+
+        let activeTab = 'manual';
+
+        function renderActiveDoc() {
+            const markdown = rawDocs[activeTab] || '';
+            const htmlContent = marked.parse(markdown);
+            const container = document.getElementById('docContent');
+            container.innerHTML = htmlContent;
+            hljs.highlightAll();
+        }
+
+        function switchDocTab(tab) {
+            activeTab = tab;
+            ['manual', 'philosophy', 'citations'].forEach(t => {
+                const btn = document.getElementById('tab-' + t);
+                if (t === tab) {
+                    btn.className = 'px-4 py-2 rounded-lg bg-blender text-white transition';
+                } else {
+                    btn.className = 'px-4 py-2 rounded-lg text-slate-400 hover:text-white transition';
+                }
+            });
+            renderActiveDoc();
+        }
+
+        function filterDocContent() {
+            const query = document.getElementById('docSearch').value.toLowerCase().trim();
+            if (!query) {
+                renderActiveDoc();
+                return;
+            }
+            const markdown = rawDocs[activeTab] || '';
+            const lines = markdown.split('\n');
+            let filtered = [];
+            let inMatch = false;
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.toLowerCase().includes(query) || (line.startsWith('#') && inMatch)) {
+                    filtered.push(line);
+                    inMatch = true;
+                } else if (line.startsWith('#')) {
+                    inMatch = false;
+                } else if (inMatch) {
+                    filtered.push(line);
+                }
+            }
+            if (filtered.length === 0) {
+                document.getElementById('docContent').innerHTML = '<p class="text-slate-400 italic">No matching sections found for "' + query + '". Try searching for camera, floor, normal, or preset.</p>';
+            } else {
+                document.getElementById('docContent').innerHTML = marked.parse(filtered.join('\n'));
+                hljs.highlightAll();
+            }
+        }
+
+        // --- Interactive 2.5D Relight & Splat Canvas ---
+        const canvas = document.getElementById('relightCanvas');
+        const ctx = canvas.getContext('2d');
+        let currentMode = 'relight';
+        let lightX = 0.5, lightY = 0.35, lightZ = 0.6;
+
+        function resizeCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            drawSandbox();
+        }
+
+        function setSandboxMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                if (btn.getAttribute('data-mode') === mode) {
+                    btn.className = 'mode-btn px-3 py-1 rounded-md bg-blender text-white font-semibold transition';
+                } else {
+                    btn.className = 'mode-btn px-3 py-1 rounded-md text-slate-400 hover:text-white transition';
+                }
+            });
+            drawSandbox();
+        }
+
+        function drawSandbox() {
+            const w = canvas.width;
+            const h = canvas.height;
+            if (!w || !h) return;
+
+            const imgData = ctx.createImageData(w, h);
+            const data = imgData.data;
+
+            const cx = w * 0.5;
+            const cy = h * 0.5;
+            const radius = Math.min(w, h) * 0.38;
+
+            const lx = (lightX * 2 - 1);
+            const ly = (lightY * 2 - 1);
+            const lz = Math.max(0.2, lightZ);
+            const lLen = Math.sqrt(lx*lx + ly*ly + lz*lz);
+            const normLx = lx / lLen;
+            const normLy = ly / lLen;
+            const normLz = lz / lLen;
+
+            // Render loop
+            const step = (currentMode === 'splats') ? 6 : 2;
+
+            ctx.fillStyle = '#070a12';
+            ctx.fillRect(0, 0, w, h);
+
+            if (currentMode === 'splats') {
+                // Draw procedural splats
+                for (let py = 10; py < h - 10; py += step) {
+                    for (let px = 10; px < w - 10; px += step) {
+                        const dx = (px - cx) / radius;
+                        const dy = (py - cy) / radius;
+                        const distSq = dx*dx + dy*dy;
+                        if (distSq <= 1.0) {
+                            const nz = Math.sqrt(1.0 - distSq);
+                            const nx = dx;
+                            const ny = dy;
+
+                            // Depth proportional radius r = Z/f
+                            const depth = 1.0 - nz * 0.5;
+                            const dot = Math.max(0, nx*normLx + ny*normLy + nz*normLz);
+                            const intensity = 0.2 + 0.8 * dot;
+
+                            ctx.beginPath();
+                            const splatR = (step * 0.65) * (1.2 / depth);
+                            ctx.arc(px, py, Math.max(1.5, splatR), 0, Math.PI * 2);
+                            
+                            // Splat color with Blender orange accent
+                            const r = Math.min(255, Math.floor(232 * intensity));
+                            const g = Math.min(255, Math.floor(125 * intensity + 30));
+                            const b = Math.min(255, Math.floor(20 * intensity + 60));
+                            ctx.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
+                            ctx.fill();
+                        } else {
+                            // Background grid splats
+                            if ((px % (step * 2) === 0) && (py % (step * 2) === 0)) {
+                                ctx.beginPath();
+                                ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+                                ctx.fillStyle = 'rgba(51, 65, 85, 0.4)';
+                                ctx.fill();
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Pixel shader emulation
+                for (let y = 0; y < h; y += step) {
+                    for (let x = 0; x < w; x += step) {
+                        const dx = (x - cx) / radius;
+                        const dy = (y - cy) / radius;
+                        const distSq = dx*dx + dy*dy;
+
+                        let r = 15, g = 23, b = 42;
+
+                        if (distSq <= 1.0) {
+                            const nz = Math.sqrt(1.0 - distSq);
+                            const nx = dx;
+                            const ny = dy;
+
+                            if (currentMode === 'normals') {
+                                // Standard normal map RGB
+                                r = Math.floor(((nx + 1.0) * 0.5) * 255);
+                                g = Math.floor(((ny + 1.0) * 0.5) * 255);
+                                b = Math.floor(((nz + 1.0) * 0.5) * 255);
+                            } else if (currentMode === 'depth') {
+                                // Metric Depth colormap
+                                const depthVal = nz;
+                                r = Math.floor((1.0 - depthVal) * 60 + depthVal * 0);
+                                g = Math.floor(depthVal * 200 + 40);
+                                b = Math.floor(depthVal * 255);
+                            } else {
+                                // 2.5D Relighted Lambert + Specular
+                                const dot = Math.max(0, nx*normLx + ny*normLy + nz*normLz);
+                                const spec = Math.pow(dot, 16) * 0.6;
+                                const diff = 0.15 + 0.85 * dot;
+                                r = Math.min(255, Math.floor(240 * diff + spec * 255));
+                                g = Math.min(255, Math.floor(160 * diff + spec * 255));
+                                b = Math.min(255, Math.floor(80 * diff + spec * 255));
+                            }
+                        }
+
+                        // Fill block
+                        for (let by = 0; by < step && (y + by) < h; by++) {
+                            for (let bx = 0; bx < step && (x + bx) < w; bx++) {
+                                const idx = ((y + by) * w + (x + bx)) * 4;
+                                data[idx] = r;
+                                data[idx + 1] = g;
+                                data[idx + 2] = b;
+                                data[idx + 3] = 255;
+                            }
+                        }
+                    }
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
+
+            // Draw Light Indicator Gizmo
+            const lxPx = lightX * w;
+            const lyPx = lightY * h;
+            ctx.beginPath();
+            ctx.arc(lxPx, lyPx, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#00F0FF';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.stroke();
+
+            // Light ray line
+            ctx.beginPath();
+            ctx.moveTo(lxPx, lyPx);
+            ctx.lineTo(cx, cy);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Canvas events
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            lightX = (e.clientX - rect.left) / rect.width;
+            lightY = (e.clientY - rect.top) / rect.height;
+            document.getElementById('light-pos-indicator').innerText = 
+                'Light: (X: ' + (lightX*2 - 1).toFixed(2) + ', Y: ' + (-(lightY*2 - 1)).toFixed(2) + ', Z: ' + lightZ.toFixed(2) + ')';
+            drawSandbox();
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                const rect = canvas.getBoundingClientRect();
+                lightX = (e.touches[0].clientX - rect.left) / rect.width;
+                lightY = (e.touches[0].clientY - rect.top) / rect.height;
+                drawSandbox();
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial setup
+        window.addEventListener('DOMContentLoaded', () => {
+            renderActiveDoc();
+            resizeCanvas();
+        });
+    </script>
+</body>
+</html>

@@ -70,6 +70,7 @@ import uvicorn
 from shared.protocol import (
     RESOLUTION_MAP, VALID_MODELS, MAX_INFER_DIM, EDGE_LTOL,
     NORMAL_EDGE_TOL_DEG, fov_y_from_fov_x, clamp_resolution,
+    PROTOCOL_VERSION,
 )
 from shared.floor import fit_floor_plane
 from shared.tta import unflip_output, fuse_views, resize_grid
@@ -77,7 +78,8 @@ from shared.exif import fov_x_from_exif
 from moge.model import import_model_class_by_version
 
 app = FastAPI(title="MoDe Splat Daemon", version="2.1.0")
-MAX_UPLOAD_SIZE = 64 * 1024 * 1024  # 64 MB cap to prevent memory exhaustion DoS
+MAX_UPLOAD_SIZE = 64 * 1024 * 1024  # 64 MB cap for single source image uploads
+MAX_MAPS_SIZE = 1024 * 1024 * 1024  # 1 GB cap for dense multi-million point numpy archives
 
 
 @app.middleware("http")
@@ -167,7 +169,7 @@ def run_infer(model, model_version: str, img_rgb: np.ndarray, level_int: int,
 
 def finalize_mask(points: np.ndarray, depth: np.ndarray, normal: np.ndarray,
                   mask, seamless: bool, apply_mask: bool, remove_edges: bool) -> np.ndarray:
-    """Shared mask/edge policy for /infer and /pano faces."""
+    """Shared mask/edge policy for /infer."""
     finite = np.isfinite(depth) & np.all(np.isfinite(points), axis=-1)
     if seamless:
         return np.ascontiguousarray(finite.astype(bool))
@@ -200,6 +202,7 @@ def finalize_mask(points: np.ndarray, depth: np.ndarray, normal: np.ndarray,
 def health():
     return {
         "status": "ok",
+        "protocol": PROTOCOL_VERSION,
         "models_loaded": sorted(f"{v}/{u}" for v, u in MODELS.keys()),
         "vram_allocated_mb": round(vram_mb(), 1),
         "cuda": torch.cuda.is_available(),
@@ -341,6 +344,7 @@ async def infer(
             orig_height=np.int32(h0),
             tta=np.array(str(tta)),
             fov_src=np.array(str(fov_src)),
+            protocol=np.int32(PROTOCOL_VERSION),
         )
         payload = buf.getvalue()
         dt = time.perf_counter() - t_all
@@ -370,9 +374,9 @@ async def level(
     t_all = time.perf_counter()
     try:
         raw = await maps.read()
-        if len(raw) > MAX_UPLOAD_SIZE:
+        if len(raw) > MAX_MAPS_SIZE:
             return JSONResponse(
-                {"error": f"maps payload exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)}MB limit"},
+                {"error": f"maps payload exceeds {MAX_MAPS_SIZE // (1024 * 1024)}MB limit"},
                 status_code=413,
             )
         try:

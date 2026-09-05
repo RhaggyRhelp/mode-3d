@@ -227,6 +227,7 @@ def ensure_splat_node_group_surfels(fallback_radius: float) -> bpy.types.NodeTre
 
     to_pts = nodes.new(type="GeometryNodeMeshToPoints")
     to_pts.location = (-500, 0)
+    to_pts.mode = "VERTICES"
 
     circle = nodes.new(type="GeometryNodeMeshCircle")
     circle.location = (-500, -250)
@@ -290,7 +291,7 @@ def ensure_splat_node_group_surfels(fallback_radius: float) -> bpy.types.NodeTre
 
 
 def set_splat_radius_all(radius: float):
-    for gname in ("MoGe_Splat_Viewer", "MoGe_Splat_Viewer_v2"):
+    for gname in ("MoGe_Splat_Viewer", "MoGe_Splat_Viewer_v2", "MoGe_Surfel_Viewer"):
         ng = bpy.data.node_groups.get(gname)
         if ng is None:
             continue
@@ -303,6 +304,11 @@ def set_splat_radius_all(radius: float):
                         n.inputs[2].default_value = float(radius)
                     except Exception:
                         pass
+            elif n.bl_idname == "GeometryNodeMeshCircle":
+                try:
+                    n.inputs["Radius"].default_value = float(radius)
+                except Exception:
+                    pass
 
 
 def new_splat_object(
@@ -374,18 +380,21 @@ def new_splat_object(
 
 
 def setup_compositor_relighter(context, img_file: Path, norm_file: Path) -> tuple[bool, str]:
-    tree = None
-    if hasattr(context.scene, "compositing_node_group") and context.scene.compositing_node_group:
-        tree = context.scene.compositing_node_group
-    if tree is None and hasattr(context.scene, "node_tree") and context.scene.node_tree:
-        tree = context.scene.node_tree
+    group_name = "MoGe_Compositor_Relighter"
+    tree = bpy.data.node_groups.get(group_name)
     if tree is None:
-        tree = bpy.data.node_groups.get("Compositor Nodes")
-    if tree is None:
-        tree = bpy.data.node_groups.new(name="Compositor Nodes", type="CompositorNodeTree")
+        tree = bpy.data.node_groups.new(name=group_name, type="CompositorNodeTree")
 
     if hasattr(context.scene, "compositing_node_group"):
         context.scene.compositing_node_group = tree
+    elif hasattr(context.scene, "node_tree"):
+        if context.scene.node_tree is None and hasattr(context.scene, "use_nodes"):
+            context.scene.use_nodes = True
+        tree = context.scene.node_tree
+
+    if tree is None:
+        return False, "Failed to initialize compositor node tree."
+
     if hasattr(context.scene, "use_nodes"):
         context.scene.use_nodes = True
     context.scene.render.use_compositing = True
@@ -445,6 +454,8 @@ def setup_compositor_relighter(context, img_file: Path, norm_file: Path) -> tupl
     node_img.location = (-700, 300)
     node_img.label = f"Plate ({img_file.name})"
     img_obj = bpy.data.images.load(str(img_file), check_existing=True)
+    img_obj.name = f"MoGe_{img_file.name}"
+    img_obj["is_moge"] = True
     img_obj.reload()
     node_img.image = img_obj
 
@@ -452,6 +463,8 @@ def setup_compositor_relighter(context, img_file: Path, norm_file: Path) -> tupl
     node_norm.location = (-700, 0)
     node_norm.label = f"Normals ({norm_file.name})"
     norm_obj = bpy.data.images.load(str(norm_file), check_existing=True)
+    norm_obj.name = f"MoGe_{norm_file.name}"
+    norm_obj["is_moge"] = True
     norm_obj.reload()
     try:
         norm_obj.colorspace_settings.name = "Non-Color"

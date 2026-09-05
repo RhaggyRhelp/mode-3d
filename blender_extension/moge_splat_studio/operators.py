@@ -6,6 +6,7 @@ import io
 import json
 import math
 import mimetypes
+import threading
 from pathlib import Path
 
 import bpy
@@ -31,15 +32,21 @@ from .preferences import get_preferences
 
 LEVEL_EMPTY = "MoGe_Level"
 LEVEL_MARKERS = ("MoGe_Floor_A", "MoGe_Floor_B", "MoGe_Floor_C")
-POINT_SCALE = 1.4
-R_MIN = 0.001
-R_MAX = 0.06
 
+try:
+    # Single source of truth is shared/protocol.py; Blender's bundled Python
+    # cannot import the repo-level `shared` package, so vendor a fallback copy.
+    # Keep values in sync with shared/protocol.py: POINT_SCALE, R_MIN, R_MAX.
+    from shared.protocol import POINT_SCALE, R_MIN, R_MAX, fov_y_from_fov_x
+except ImportError:
+    POINT_SCALE = 1.4
+    R_MIN = 0.001
+    R_MAX = 0.06
 
-def fov_y_from_fov_x(fov_x_deg: float, w: int, h: int) -> float:
-    fx = math.radians(float(fov_x_deg))
-    fy = 2.0 * math.atan(math.tan(fx / 2.0) * (float(h) / float(w)))
-    return math.degrees(fy)
+    def fov_y_from_fov_x(fov_x_deg: float, w: int, h: int) -> float:
+        fx = math.radians(float(fov_x_deg))
+        fy = 2.0 * math.atan(math.tan(fx / 2.0) * (float(h) / float(w)))
+        return math.degrees(fy)
 
 
 def _infer_to_orig_coords(xs, ys, w: int, h: int, w0: int, h0: int):
@@ -141,20 +148,28 @@ class MOGE_OT_stop_daemon(Operator):
 class MOGE_OT_scan_splat_daemon(Operator):
     bl_idname = "moge_splat.scan_daemon"
     bl_label = "Generate 3D Splats"
-    bl_description = "Run AI depth inference and generate 3D point splats in Blender"
+    bl_description = "Run AI depth inference and generate 3D point splats in Blender (non-blocking; ESC cancels UI update, in-flight GPU request is discarded)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context):
+    _thread = None
+    _timer = None
+    _worker_result = None
+    _worker_error = None
+    _config = None
+    _is_running = False
+    _cancel_requested = False
+
+    def _prepare_scan(self, context):
+        # Main-thread only: may touch bpy (path, PIL+bpy image load for color).
+        # Must NOT block on network here; ensure_daemon_ready runs in _run_worker.
         props = context.scene.moge_splat_props
         target_path = bpy.path.abspath(props.import_path)
         if not target_path or not os.path.exists(target_path):
-            self.report({'ERROR'}, "Select a valid image file first.")
-            return {'CANCELLED'}
+            return False, "Select a valid image file first.", None
 
         ext = os.path.splitext(target_path)[1].lower()
         if ext not in ('.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'):
-            self.report({'ERROR'}, f"Unsupported image format: {ext}")
-            return {'CANCELLED'}
+            return False, f"Unsupported image format: {ext}", None
 
         # Surface mode mappings
         if props.surface_mode == 'SEAMLESS':
@@ -164,17 +179,13 @@ class MOGE_OT_scan_splat_daemon(Operator):
         else:
             seamless, apply_mask, remove_edges = False, bool(props.apply_mask), True
 
-        ready, msg = ensure_daemon_ready(props, autostart=bool(props.daemon_autostart))
-        if not ready:
-            self.report({'ERROR'}, msg)
-            return {'CANCELLED'}
-
+        # Fast local VRAM sanity gate (no network): Giant + 4K warns upfront.
         try:
-            with open(target_path, "rb") as f:
-                img_bytes = f.read()
-        except Exception as e:
-            self.report({'ERROR'}, f"Cannot read image: {e}")
-            return {'CANCELLED'}
+            _variant = str(getattr(props, "model_variant", "vitl") or "vitl")
+            if _variant == "vitg" and int(props.max_size) >= 3000:
+                self.report({'WARNING'}, "Giant + 4K needs ~7GB VRAM and ~10s first-load; close other GPU apps if the scan stalls.")
+        except Exception:
+            pass
 
         mime, _ = mimetypes.guess_type(target_path)
         mime = mime or "image/jpeg"
@@ -193,41 +204,90 @@ class MOGE_OT_scan_splat_daemon(Operator):
         if props.use_custom_fov and props.custom_fov > 1.0:
             fields["fov_x_override"] = str(props.custom_fov)
 
-        self.report({'INFO'}, f"Inferring {props.model_version}/{getattr(props, 'model_variant', 'vitl')} ...")
-        try:
-            scode, ctype, payload = daemon_post_multipart(
-                "/infer", fields, "image", os.path.basename(target_path), img_bytes, mime, timeout=180.0
-            )
-        except Exception as e:
-            self.report({'ERROR'}, f"Daemon request failed: {e}")
-            return {'CANCELLED'}
+        # Preload native full-res colors on the MAIN thread (bpy fallback is
+        # main-thread only). Worker thread must never touch bpy.*.
+        native_rgb = None
+        if bool(props.fullres_color) and os.path.exists(target_path):
+            try:
+                native_rgb = _load_native_rgb(target_path)
+            except Exception as e:
+                print(f"[MoGe Splat Studio] native color preload failed, using infer colors: {e}")
+                native_rgb = None
 
+        config = {
+            "target_path": target_path,
+            "fields": fields,
+            "mime": mime,
+            "autostart": bool(props.daemon_autostart),
+            "native_rgb": native_rgb,
+            "point_budget": int(props.point_budget),
+            "splat_style": str(props.splat_style),
+            "fullres_color": bool(props.fullres_color),
+            "radius_scale": float(props.radius_scale),
+            "model_version": str(props.model_version),
+            "model_variant": getattr(props, "model_variant", "vitl") or "vitl",
+            "sync_render_resolution": getattr(props, "sync_render_resolution", True),
+        }
+        return True, "", config
+
+    @staticmethod
+    def _run_worker(config):
+        # Worker thread: pure network + numpy + file IO. NEVER touch bpy.* here.
+        # (bpy preparation happens in _prepare_scan; bpy building in _build_scene.)
+        target_path = config["target_path"]
+        fields = config["fields"]
+        mime = config["mime"]
+
+        # Cold-start + CUDA gate off-thread so invoke() never blocks the UI.
+        ready, msg = ensure_daemon_ready(None, autostart=bool(config.get("autostart", True)))
+        if not ready:
+            raise RuntimeError(msg)
+        try:
+            _st, _payload = daemon_health()
+            if isinstance(_payload, dict):
+                if not bool(_payload.get("cuda", True)) and str(config.get("model_variant", "vitl")) == "vitg":
+                    raise RuntimeError("Giant (ViT-G) needs an NVIDIA CUDA GPU; switch to Standard or start the GPU engine.")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
+        try:
+            with open(target_path, "rb") as f:
+                img_bytes = f.read()
+        except Exception as e:
+            raise RuntimeError(f"Cannot read image: {e}")
+
+        scode, ctype, payload = daemon_post_multipart(
+            "/infer", fields, "image", os.path.basename(target_path), img_bytes, mime, timeout=180.0
+        )
         if scode != 200:
             try:
                 err = json.loads(payload.decode("utf-8", "replace")).get("error", payload[:300])
             except Exception:
                 err = payload[:300]
-            self.report({'ERROR'}, f"Daemon error ({scode}): {err}")
-            return {'CANCELLED'}
+            raise RuntimeError(f"Daemon error ({scode}): {err}")
 
-        # Decode .npz payload
+        # Decode .npz payload (protocol v1 archives lack the key; assume 1)
+        z = np.load(io.BytesIO(payload), allow_pickle=False)
         try:
-            z = np.load(io.BytesIO(payload), allow_pickle=False)
-            points = np.asarray(z["points"], dtype=np.float32)
-            depth = np.asarray(z["depth"], dtype=np.float32)
-            normal = np.asarray(z["normal"], dtype=np.float32)
-            mask = np.asarray(z["mask"]).astype(bool)
-            K = np.asarray(z["intrinsics"], dtype=np.float32)
-            img_rgb = np.asarray(z["image"])
-            fov_x = float(z["fov_x"])
-            fov_y = float(z["fov_y"])
-            W, H = int(z["width"]), int(z["height"])
-            W0, H0 = int(z.get("orig_width", W)), int(z.get("orig_height", H))
-            fov_src = str(z.get("fov_src", "model"))
-            tta_used = str(z.get("tta", "off"))
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to decode response: {e}")
-            return {'CANCELLED'}
+            _proto = int(z["protocol"]) if "protocol" in z else 1
+        except Exception:
+            _proto = 1
+        if _proto != 2:
+            print(f"[MoGe Splat Studio] warning: daemon protocol v{_proto} != addon v2; attempting backward-compat read.")
+        points = np.asarray(z["points"], dtype=np.float32)
+        depth = np.asarray(z["depth"], dtype=np.float32)
+        normal = np.asarray(z["normal"], dtype=np.float32) if "normal" in z else None
+        mask = np.asarray(z["mask"]).astype(bool)
+        K = np.asarray(z["intrinsics"], dtype=np.float32)
+        img_rgb = np.asarray(z["image"])
+        fov_x = float(z["fov_x"])
+        fov_y = float(z["fov_y"])
+        W, H = int(z["width"]), int(z["height"])
+        W0, H0 = int(z.get("orig_width", W)), int(z.get("orig_height", H))
+        fov_src = str(z.get("fov_src", "model"))
+        tta_used = str(z.get("tta", "off"))
 
         valid = mask & np.isfinite(depth) & (depth >= 0.08) & np.all(np.isfinite(points), axis=-1)
         if normal is not None and getattr(normal, 'shape', None) and normal.shape[:2] == depth.shape:
@@ -235,14 +295,13 @@ class MOGE_OT_scan_splat_daemon(Operator):
         ys, xs = np.nonzero(valid)
         n_all = int(valid.sum())
         if n_all < 100:
-            self.report({'ERROR'}, "Too few valid points returned. Try 'Seamless' mode.")
-            return {'CANCELLED'}
+            raise RuntimeError("Too few valid points returned. Try 'Seamless' mode.")
 
         stride = 1
-        effective_budget = props.point_budget
-        if props.splat_style == 'SURFELS':
-            # Safeguard: Each surfel instantiates a 6-sided polygon.
-            # Clamp surfels to 500k to prevent realizing >3M polygons and freezing the viewport depsgraph.
+        effective_budget = config["point_budget"]
+        if config["splat_style"] == 'SURFELS':
+            if effective_budget > 500_000:
+                print(f"[MoGe Splat Studio] Info: Clamping surfel budget from {effective_budget:,} to 500,000 for viewport performance.")
             effective_budget = min(effective_budget, 500_000)
 
         if n_all > effective_budget:
@@ -251,13 +310,13 @@ class MOGE_OT_scan_splat_daemon(Operator):
             ys = ys[::stride]
         pts = points[ys, xs]
 
-        # Decoupled high-res color
+        # Decoupled high-res color: use main-thread preloaded native array.
+        # Worker must never call _load_native_rgb (bpy fallback is main-thread only).
         color_src = "infer"
         cols = None
-        native = None
-        if props.fullres_color and os.path.exists(target_path):
+        native = config.get("native_rgb")
+        if config["fullres_color"] and native is not None:
             try:
-                native = _load_native_rgb(target_path)
                 if native.ndim == 3 and native.shape[2] == 3:
                     H0n, W0n = int(native.shape[0]), int(native.shape[1])
                     W0, H0 = W0n, H0n
@@ -269,6 +328,7 @@ class MOGE_OT_scan_splat_daemon(Operator):
                         color_src = "native (1:1)"
             except Exception as e:
                 color_src = f"infer ({e})"
+                cols = None
         if cols is None:
             cols = img_rgb[ys, xs].astype(np.float32) / 255.0
 
@@ -278,18 +338,13 @@ class MOGE_OT_scan_splat_daemon(Operator):
         fx_norm = float(K[0, 0])
         fx_px = fx_norm * W if fx_norm <= 1.0 else fx_norm
 
-        # Adaptive radii with guaranteed physical bounds (prevents giant blobs)
-        def _adaptive_radii(d, fx):
-            raw = (np.maximum(d, 0.05) / max(fx, 1.0)) * POINT_SCALE * float(props.radius_scale)
-            return np.clip(raw, R_MIN, R_MAX)
-
-        radii = _adaptive_radii(pdepth, fx_px)
+        raw_r = (np.maximum(pdepth, 0.05) / max(fx_px, 1.0)) * POINT_SCALE * config["radius_scale"]
+        radii = np.clip(raw_r, R_MIN, R_MAX)
         radius_fallback = float(np.median(radii)) if len(radii) else 0.01
-        radius_src = f"adaptive x{float(props.radius_scale):.2f} med {radius_fallback * 1000.0:.1f}mm"
+        radius_src = f"adaptive x{config['radius_scale']:.2f} med {radius_fallback * 1000.0:.1f}mm"
 
-        # --- Self-Cleaning: Wipe previous temporary scan files ---
+        # Wipe previous scan cache and save new scan files
         cache_dir = prepare_new_scan_cache()
-
         try:
             (cache_dir / "response.npz").write_bytes(payload)
             meta = {
@@ -299,39 +354,16 @@ class MOGE_OT_scan_splat_daemon(Operator):
                 "orig_width": W0, "orig_height": H0, "color_src": color_src,
                 "radius_src": radius_src, "fx_px": fx_px,
                 "min_depth": min_d, "max_depth": max_d,
-                "model_version": props.model_version,
-                "variant": getattr(props, "model_variant", "vitl") or "vitl",
+                "model_version": config["model_version"],
+                "variant": config["model_variant"],
                 "tta": tta_used, "points": int(pts.shape[0]),
             }
             with open(cache_dir / "meta.json", "w") as f:
                 json.dump(meta, f, indent=2)
-        except Exception:
-            pass
-
-        props.last_scan_folder = str(cache_dir)
-        props.last_scanned_image = target_path
-        props.last_scan_points = int(pts.shape[0])
-        props.last_scan_model = f"{props.model_version}/{getattr(props, 'model_variant', 'vitl') or 'vitl'}"
-        props.last_scan_depth_range = f"{min_d:.2f}m .. {max_d:.2f}m"
-        props.last_scan_fov = f"{fov_x:.1f}° × {fov_y:.1f}° ({fov_src})"
-        props.cache_size_mb = round(len(payload) / (1024.0 * 1024.0), 1)
-
-        # Cleanup old Blender objects & datablocks if configured
-        prefs = get_preferences()
-        auto_purge = prefs.auto_purge_datablocks if prefs else True
-
-        for obj in list(context.scene.objects):
-            if obj.name in ("MoGe_Splats", "MoGe_Camera", "MoGe_Geometry"):
-                try:
-                    bpy.data.objects.remove(obj, do_unlink=True)
-                except Exception:
-                    pass
-
-        if auto_purge:
-            purge_orphaned_blender_datablocks()
+        except Exception as e:
+            print(f"[MoGe Splat Studio] warning: could not write scan cache meta: {e}")
 
         xyz_bl = np.stack([pts[:, 0], pts[:, 2], -pts[:, 1]], axis=-1)
-
         norms_bl = None
         if normal is not None and getattr(normal, 'shape', None) and normal.shape[:2] == depth.shape:
             try:
@@ -342,10 +374,54 @@ class MOGE_OT_scan_splat_daemon(Operator):
             except Exception:
                 norms_bl = None
 
+        return {
+            "xyz_bl": xyz_bl,
+            "cols": cols,
+            "pdepth": pdepth,
+            "radii": radii,
+            "fx_px": fx_px,
+            "radius_fallback": radius_fallback,
+            "radius_src": radius_src,
+            "norms_bl": norms_bl,
+            "fov_x": fov_x,
+            "fov_y": fov_y,
+            "fov_src": fov_src,
+            "W0": W0,
+            "H0": H0,
+            "min_d": min_d,
+            "max_d": max_d,
+            "pts_count": int(pts.shape[0]),
+            "cache_dir": str(cache_dir),
+            "payload_len": len(payload),
+        }
+
+    def _build_scene(self, context, res, config):
+        props = context.scene.moge_splat_props
+        props.last_scan_folder = res["cache_dir"]
+        props.last_scanned_image = config["target_path"]
+        props.last_scan_points = res["pts_count"]
+        props.last_scan_model = f"{config['model_version']}/{config['model_variant']}"
+        props.last_scan_depth_range = f"{res['min_d']:.2f}m .. {res['max_d']:.2f}m"
+        props.last_scan_fov = f"{res['fov_x']:.1f}° × {res['fov_y']:.1f}° ({res['fov_src']})"
+        props.cache_size_mb = round(res["payload_len"] / (1024.0 * 1024.0), 1)
+
+        prefs = get_preferences()
+        auto_purge = prefs.auto_purge_datablocks if prefs else True
+
+        for obj in list(context.scene.objects):
+            if obj.name in ("MoGe_Splats", "MoGe_Camera", "MoGe_Geometry"):
+                try:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                except Exception as e:
+                    print(f"[MoGe Splat Studio] old object removal skipped {obj.name}: {e}")
+
+        if auto_purge:
+            purge_orphaned_blender_datablocks()
+
         new_splat_object(
-            context, xyz_bl, cols, pdepth, radii, fx_px,
-            float(props.radius_scale), radius_fallback,
-            normals=norms_bl, splat_style=props.splat_style,
+            context, res["xyz_bl"], res["cols"], res["pdepth"], res["radii"], res["fx_px"],
+            config["radius_scale"], res["radius_fallback"],
+            normals=res["norms_bl"], splat_style=config["splat_style"],
             shading_mode=getattr(props, "shading_mode", "NORMAL"),
         )
 
@@ -357,24 +433,133 @@ class MOGE_OT_scan_splat_daemon(Operator):
         cam_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
         cam_data.sensor_width = 36.0
         cam_data.sensor_fit = "HORIZONTAL"
-        cam_data.lens = (36.0 / 2.0) / math.tan(math.radians(max(fov_x, 1.0) / 2.0))
-        cam_data.clip_start = max(0.05, min_d * 0.3)
-        cam_data.clip_end = max(100.0, max_d * 2.0)
+        cam_data.lens = (36.0 / 2.0) / math.tan(math.radians(max(res["fov_x"], 1.0) / 2.0))
+        cam_data.clip_start = max(0.05, res["min_d"] * 0.3)
+        cam_data.clip_end = max(100.0, res["max_d"] * 2.0)
         cam_data.display_size = 0.5
         cam_data.show_name = True
         cam_data.show_passepartout = True
         cam_data.passepartout_alpha = 1.0
         context.scene.camera = cam_obj
 
-        # Match scene render resolution & aspect ratio to input photo
-        if W0 > 0 and H0 > 0:
-            context.scene.render.resolution_x = int(W0)
-            context.scene.render.resolution_y = int(H0)
+        # Match scene render resolution & aspect ratio to input photo (if enabled)
+        if config["sync_render_resolution"] and res["W0"] > 0 and res["H0"] > 0:
+            context.scene.render.resolution_x = int(res["W0"])
+            context.scene.render.resolution_y = int(res["H0"])
             context.scene.render.pixel_aspect_x = 1.0
             context.scene.render.pixel_aspect_y = 1.0
 
-        self.report({'INFO'}, f"Done: {pts.shape[0]:,} splats ({radius_src}). Hit Camera or Relight.")
-        return {'FINISHED'}
+        self.report({'INFO'}, f"Done: {res['pts_count']:,} splats ({res['radius_src']}). Hit Camera or Relight.")
+
+    def _cleanup_modal(self, context):
+        if self._timer:
+            try:
+                context.window_manager.event_timer_remove(self._timer)
+            except Exception:
+                pass
+            self._timer = None
+        try:
+            context.workspace.status_text_set(None)
+        except Exception:
+            pass
+        try:
+            context.window_manager.progress_end()
+        except Exception:
+            pass
+        MOGE_OT_scan_splat_daemon._is_running = False
+
+    def modal(self, context, event):
+        if event.type == 'ESC':
+            # Cooperative cancel: worker HTTP call cannot be aborted mid-flight,
+            # so flag it and discard the late result instead of building the scene.
+            self._cancel_requested = True
+            MOGE_OT_scan_splat_daemon._cancel_requested = True
+            self.report({'WARNING'}, "3D Splat generation cancelled (background request will be discarded).")
+            self._cleanup_modal(context)
+            return {'CANCELLED'}
+
+        if event.type == 'TIMER':
+            if self._thread and self._thread.is_alive():
+                try:
+                    context.workspace.status_text_set("MoDe 3D: Inferring 3D depth & normals on GPU (ESC to cancel)...")
+                    context.window_manager.progress_update(50)
+                except Exception:
+                    pass
+                return {'PASS_THROUGH'}
+
+            if getattr(self, "_cancel_requested", False):
+                self._cleanup_modal(context)
+                return {'CANCELLED'}
+
+            self._cleanup_modal(context)
+            if self._worker_error:
+                self.report({'ERROR'}, f"Scan failed: {self._worker_error}")
+                return {'CANCELLED'}
+
+            if self._worker_result:
+                try:
+                    self._build_scene(context, self._worker_result, self._config)
+                    return {'FINISHED'}
+                except Exception as e:
+                    self.report({'ERROR'}, f"Failed to build 3D splats: {e}")
+                    return {'CANCELLED'}
+
+        return {'PASS_THROUGH'}
+
+    def invoke(self, context, event):
+        if MOGE_OT_scan_splat_daemon._is_running:
+            self.report({'WARNING'}, "A scan is already in progress.")
+            return {'CANCELLED'}
+
+        ok, msg, config = self._prepare_scan(context)
+        if not ok:
+            self.report({'ERROR'}, msg)
+            return {'CANCELLED'}
+
+        self._config = config
+        self._worker_result = None
+        self._worker_error = None
+        self._cancel_requested = False
+        MOGE_OT_scan_splat_daemon._cancel_requested = False
+        MOGE_OT_scan_splat_daemon._is_running = True
+
+        def _bg_target():
+            try:
+                res = self._run_worker(config)
+                # Discard late result if user cancelled while request was in flight.
+                if getattr(self, "_cancel_requested", False):
+                    return
+                self._worker_result = res
+            except Exception as e:
+                if getattr(self, "_cancel_requested", False):
+                    return
+                self._worker_error = str(e)
+
+        self._thread = threading.Thread(target=_bg_target, daemon=True)
+        self._thread.start()
+
+        self._timer = context.window_manager.event_timer_add(0.1, window=context.window)
+        context.window_manager.modal_handler_add(self)
+        try:
+            context.window_manager.progress_begin(0, 100)
+            context.window_manager.progress_update(10)
+        except Exception:
+            pass
+        self.report({'INFO'}, f"Inferring {config['model_version']}/{config['model_variant']} (non-blocking) ...")
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        ok, msg, config = self._prepare_scan(context)
+        if not ok:
+            self.report({'ERROR'}, msg)
+            return {'CANCELLED'}
+        try:
+            res = self._run_worker(config)
+            self._build_scene(context, res, config)
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Daemon request failed: {e}")
+            return {'CANCELLED'}
 
 
 class MOGE_OT_update_splat_radius(Operator):
@@ -395,6 +580,11 @@ class MOGE_OT_update_splat_radius(Operator):
         u_rad = float(props.splat_radius)
         if u_rad > 0.0:
             set_splat_radius_all(u_rad)
+            attr_r = mesh.attributes.get("SplatRadius")
+            if attr_r is not None:
+                radii = np.full(len(mesh.vertices), u_rad, dtype=np.float32)
+                attr_r.data.foreach_set("value", radii)
+                mesh.update()
             self.report({'INFO'}, f"Applied uniform radius {u_rad * 1000.0:.1f}mm")
             return {'FINISHED'}
 
@@ -493,18 +683,29 @@ def _apply_level_matrix(context, M_rows, label: str):
     if empty is not None and empty.type != "EMPTY":
         bpy.data.objects.remove(empty, do_unlink=True)
         empty = None
+
+    # If objects were already parented to an existing empty, reset them to raw camera coordinates first
+    if empty is not None:
+        for child in list(empty.children):
+            child.matrix_world = empty.matrix_world.inverted() @ child.matrix_world
+            child.parent = None
+
     if empty is None:
         empty = bpy.data.objects.new(LEVEL_EMPTY, None)
         context.collection.objects.link(empty)
         empty.empty_display_type = "PLAIN_AXES"
+
     empty.matrix_world = M
     empty["moge_level_label"] = label[:200]
 
     for name in ("MoGe_Splats", "MoGe_Camera"):
         o = bpy.data.objects.get(name)
         if o and o != empty:
+            # Keep-Transform parenting: world must stay identical after parenting.
+            # world = parent @ parent_inverse @ basis, so with basis untouched
+            # the inverse must be parent_world^-1.
             o.parent = empty
-            o.matrix_parent_inverse.identity()
+            o.matrix_parent_inverse = empty.matrix_world.inverted()
     return empty
 
 
@@ -521,6 +722,30 @@ class MOGE_OT_level_auto(Operator):
             self.report({'ERROR'}, "No active scan data found. Please run Scan first.")
             return {'CANCELLED'}
 
+        # 1. Primary path: Instant local floor fitting (0 network transfer, no 413 payload limit)
+        try:
+            try:
+                from .floor import fit_floor_plane
+            except ImportError:
+                from floor import fit_floor_plane
+
+            z = np.load(npz_path, allow_pickle=False)
+            res = fit_floor_plane(
+                z["points"], z["normal"], z["mask"],
+                ransac_iters=1500, cone_deg=40.0, seed=0
+            )
+            if res.get("ok") and "matrix_blender" in res:
+                empty = _apply_level_matrix(context, res["matrix_blender"], f"auto: {res.get('message', '')}")
+                self.report({'INFO'}, f"Floor levelled to Z=0 ({res.get('message', '')})")
+                context.view_layer.objects.active = empty
+                empty.select_set(True)
+                return {'FINISHED'}
+            elif not res.get("ok") and not res.get("uncertain"):
+                self.report({'WARNING'}, f"Floor detection: {res.get('message', '')}")
+        except Exception as e:
+            print(f"[MoGe Splat Studio] local floor fit failed, trying daemon fallback: {e}")
+
+        # 2. Fallback path: Daemon /level endpoint
         try:
             raw = npz_path.read_bytes()
             scode, ctype, payload = daemon_post_multipart(
@@ -532,7 +757,10 @@ class MOGE_OT_level_auto(Operator):
             return {'CANCELLED'}
 
         if scode != 200:
-            self.report({'ERROR'}, f"Auto-level error ({scode})")
+            if scode == 413:
+                self.report({'ERROR'}, "Auto-level error (413: Scan payload too large for daemon).")
+            else:
+                self.report({'ERROR'}, f"Auto-level error ({scode})")
             return {'CANCELLED'}
 
         try:
@@ -627,11 +855,10 @@ class MOGE_OT_level_remove(Operator):
         empty = bpy.data.objects.get(LEVEL_EMPTY)
         if empty:
             for child in list(empty.children):
-                m = child.matrix_world.copy()
+                child.matrix_world = empty.matrix_world.inverted() @ child.matrix_world
                 child.parent = None
-                child.matrix_world = m
             bpy.data.objects.remove(empty, do_unlink=True)
-            self.report({'INFO'}, "Levelling removed.")
+            self.report({'INFO'}, "Levelling removed; objects reset to camera coordinates.")
             return {'FINISHED'}
         self.report({'INFO'}, "No levelling active.")
         return {'FINISHED'}
@@ -648,5 +875,39 @@ class MOGE_OT_set_resolution(Operator):
 
     def execute(self, context):
         props = context.scene.moge_splat_props
-        props.max_size = self.resolution
+        if props.max_size == self.resolution:
+            return {'FINISHED'}
+        # Resolution shortcut buttons should not force preset to Custom via
+        # max_size update handler; re-evaluate preset match afterwards instead.
+        try:
+            from . import properties as _propmod
+        except ImportError:
+            _propmod = None
+        if _propmod is not None:
+            _propmod._STAMPING_PRESET = True
+        try:
+            props.max_size = self.resolution
+        finally:
+            if _propmod is not None:
+                _propmod._STAMPING_PRESET = False
+        # Now snap preset label to whichever preset (if any) matches the new state.
+        try:
+            if _propmod is not None:
+                for pname, vals in _propmod.PRESET_VALUES.items():
+                    if _propmod._matches_preset_dict(props, vals):
+                        if props.preset != pname:
+                            _propmod._STAMPING_PRESET = True
+                            try:
+                                props.preset = pname
+                            finally:
+                                _propmod._STAMPING_PRESET = False
+                        return {'FINISHED'}
+                if props.preset != "Custom":
+                    _propmod._STAMPING_PRESET = True
+                    try:
+                        props.preset = "Custom"
+                    finally:
+                        _propmod._STAMPING_PRESET = False
+        except Exception:
+            pass
         return {'FINISHED'}

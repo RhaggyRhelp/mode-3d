@@ -12,3 +12,6 @@ license = [
 ]
 website = "https://github.com/RhaggyRhelp/mode-3d"
 tags = ["Import-Export", "3D View", "Material", "Lighting"]
+
+[permissions]
+network = "Connect to local MoGe AI inference daemon"

@@ -40,14 +40,41 @@ def _apply_preset(self, context):
         _STAMPING_PRESET = False
 
 
+def _matches_preset_dict(props, vals: dict) -> bool:
+    try:
+        return (
+            props.model_version == vals.get("model_version") and
+            props.model_variant == vals.get("variant", "vitl") and
+            props.resolution_level == vals.get("resolution_level") and
+            props.refine_steps == vals.get("refine_steps") and
+            props.max_size == vals.get("max_size") and
+            getattr(props, "tta_mode", "off") == vals.get("tta", "off") and
+            getattr(props, "point_budget", 1200000) == vals.get("point_budget", 1200000)
+        )
+    except Exception:
+        return False
+
+
 def _mark_custom(self, context):
+    global _STAMPING_PRESET
     if _STAMPING_PRESET:
         return
-    try:
-        if self.preset != "Custom":
+    for pname, vals in PRESET_VALUES.items():
+        if _matches_preset_dict(self, vals):
+            if self.preset != pname:
+                _STAMPING_PRESET = True
+                try:
+                    self.preset = pname
+                finally:
+                    _STAMPING_PRESET = False
+            return
+
+    if self.preset != "Custom":
+        _STAMPING_PRESET = True
+        try:
             self.preset = "Custom"
-    except Exception:
-        pass
+        finally:
+            _STAMPING_PRESET = False
 
 
 class MoGeSplatProperties(PropertyGroup):
@@ -194,6 +221,11 @@ class MoGeSplatProperties(PropertyGroup):
     daemon_autostart: BoolProperty(
         name="Auto-Start AI Engine",
         description="If the background GPU AI engine is down when you hit Generate, start it automatically",
+        default=True,
+    )
+    sync_render_resolution: BoolProperty(
+        name="Match Render Resolution",
+        description="Automatically match Blender scene render resolution to input photo dimensions",
         default=True,
     )
     tta_mode: EnumProperty(

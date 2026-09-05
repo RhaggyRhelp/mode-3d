@@ -1,16 +1,6 @@
-bl_info = {
-    "name": "MoDe 3D Studio",
-    "author": "MeshHead & Contributors",
-    "version": (2, 1, 0),
-    "blender": (4, 2, 0),
-    "location": "View3D > Sidebar > MoDe 3D",
-    "description": "MoDe 3D: Metric Monocular Depth & Relighting Studio for Blender (4.2+ / 5.x)",
-    "category": "Import-Export",
-    "doc_url": "https://github.com/RhaggyRhelp/mode-3d",
-}
-
 import bpy
 from bpy.props import PointerProperty
+from bpy.app.handlers import persistent
 
 from .preferences import MoGeAddonPreferences
 from .properties import MoGeSplatProperties
@@ -49,13 +39,30 @@ CLASSES = (
 )
 
 
+@persistent
+def _on_blender_exit(dummy=None):
+    from .network import daemon_stop
+    try:
+        daemon_stop()
+    except Exception:
+        pass
+
+
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.moge_splat_props = PointerProperty(type=MoGeSplatProperties)
 
+    if hasattr(bpy.app.handlers, "exit_pre"):
+        if _on_blender_exit not in bpy.app.handlers.exit_pre:
+            bpy.app.handlers.exit_pre.append(_on_blender_exit)
+
 
 def unregister():
+    if hasattr(bpy.app.handlers, "exit_pre"):
+        if _on_blender_exit in bpy.app.handlers.exit_pre:
+            bpy.app.handlers.exit_pre.remove(_on_blender_exit)
+
     if hasattr(bpy.types.Scene, "moge_splat_props"):
         try:
             del bpy.types.Scene.moge_splat_props

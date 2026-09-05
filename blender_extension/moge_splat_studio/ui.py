@@ -11,6 +11,10 @@ class VIEW3D_PT_moge_splat(Panel):
     bl_category = 'MoDe 3D'
     bl_label = 'MoDe 3D Studio'
 
+    @classmethod
+    def poll(cls, context):
+        return bool(context.scene and hasattr(context.scene, "moge_splat_props"))
+
     def draw(self, context):
         layout = self.layout
         props = context.scene.moge_splat_props
@@ -95,8 +99,11 @@ class VIEW3D_PT_moge_splat(Panel):
             row_disp = dbox.row(align=True)
             row_disp.prop(props, "splat_style", text="Style")
             row_disp.prop(props, "shading_mode", text="Lighting")
+            if props.splat_style == 'SURFELS':
+                dbox.label(text="Surfels clamped to 500k polygons max", icon='INFO')
             dbox.prop(props, "point_budget", text="Point Limit")
             dbox.prop(props, "fullres_color", text="High-Res Colors")
+            dbox.prop(props, "sync_render_resolution", text="Match Scene Resolution")
 
             row_scale = dbox.row(align=True)
             row_scale.prop(props, "radius_scale", text="Gap Fill")
@@ -112,8 +119,12 @@ class VIEW3D_PT_moge_splat(Panel):
             row_m.operator("moge_splat.level_markers_apply", text="Align to Markers", icon='CHECKMARK')
             lbox.operator("moge_splat.level_remove", text="Reset Alignment", icon='X')
 
-        # Primary Action Button
+        # Primary Action Button & Cold-Start Status
         layout.separator()
+        row_eng = layout.row(align=True)
+        row_eng.prop(props, "daemon_autostart", text="Auto-Start", icon='AUTO')
+        row_eng.operator("moge_splat.ensure_daemon", text="Check Status", icon='CHECKMARK')
+
         btn_col = layout.column()
         btn_col.scale_y = 1.6
         btn_col.operator("moge_splat.scan_daemon", text="Generate 3D Splats", icon='RESTRICT_RENDER_OFF')

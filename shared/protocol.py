@@ -5,6 +5,11 @@ DAEMON_HOST = "127.0.0.1"
 DAEMON_PORT = 8766
 DAEMON_URL = f"http://{DAEMON_HOST}:{DAEMON_PORT}"
 
+# Wire protocol version: bump when .npz keys or /infer semantics change.
+# Daemon stamps it into /health + response.npz; Blender warns on mismatch
+# but keeps backward compat with v1 archives that lack the key.
+PROTOCOL_VERSION = 2
+
 # v3 infer() maps level 0..9 -> num_tokens 1200..3600. Ultra=30 upstream = 9200 tokens -> OOM. Clamped.
 RESOLUTION_MAP = {"Low": 0, "Medium": 5, "High": 9}
 VALID_LEVELS = ("Low", "Medium", "High")
@@ -18,6 +23,8 @@ PRESETS = {
     "Quality":     {"model_version": "v3", "variant": "vitl", "resolution_level": "High",   "refine_steps": 3, "max_size": 2448, "tta": "off", "point_budget": 2000000},
     "Max Quality": {"model_version": "v3", "variant": "vitg", "resolution_level": "High",   "refine_steps": 7, "max_size": 4096, "tta": "flip", "point_budget": 4000000},
 }
+# Backward compatibility alias
+PRESETS["Giant"] = PRESETS["Max Quality"]
 
 MAX_POINT_BUDGET = 12_000_000  # raised budget limit (was 1.2M)
 POINT_SCALE = 1.4              # matches DepthMap3DViewer(point_scale=1.4)

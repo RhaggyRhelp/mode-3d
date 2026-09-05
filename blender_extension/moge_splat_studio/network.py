@@ -11,9 +11,14 @@ import http.client
 import subprocess
 from pathlib import Path
 
-import bpy
+try:
+    import bpy
+    from .preferences import get_preferences
+except Exception:
+    bpy = None
 
-from .preferences import get_preferences
+    def get_preferences(context=None):
+        return None
 
 
 def get_daemon_endpoint() -> tuple[str, int]:
@@ -97,23 +102,86 @@ def daemon_post_multipart(
         conn.close()
 
 
+def _get_cache_root_safe() -> Path:
+    try:
+        from .cleanup import get_cache_root
+        return get_cache_root()
+    except Exception:
+        pass
+    try:
+        from cleanup import get_cache_root
+        return get_cache_root()
+    except Exception:
+        pass
+    p = Path(tempfile.gettempdir()) / "moge_splat_cache"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _daemon_log_path() -> Path:
-    from .cleanup import get_cache_root
-    return get_cache_root() / "moge_daemon.log"
+    return _get_cache_root_safe() / "moge_daemon.log"
 
 
 def _daemon_pid_path() -> Path:
-    from .cleanup import get_cache_root
-    return get_cache_root() / "moge_daemon.pid"
+    return _get_cache_root_safe() / "moge_daemon.pid"
+
+
+def get_global_config_path() -> Path:
+    """Return user-level persistent config path."""
+    return Path.home() / ".mode_3d" / "config.json"
+
+
+def read_saved_config() -> dict:
+    """Read machine-specific paths saved by the one-click installer."""
+    # 1. Check staged config in this extension's folder
+    try:
+        local_cfg = Path(__file__).resolve().parent / "mode_3d_config.json"
+        if local_cfg.exists():
+            with open(local_cfg, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        pass
+
+    # 2. Check global user profile (~/.mode_3d/config.json)
+    try:
+        global_cfg = get_global_config_path()
+        if global_cfg.exists():
+            with open(global_cfg, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        pass
+
+    return {}
 
 
 def _find_daemon_script() -> Path:
     """Find daemon/moge_daemon.py dynamically."""
+    # 1. Environment variable
     env = os.environ.get("MOGE_HOME", "").strip().strip('"')
-    if env and (Path(env) / "daemon" / "moge_daemon.py").exists():
-        return Path(env) / "daemon" / "moge_daemon.py"
+    if env:
+        for sub in ("daemon/moge_daemon.py", "moge_daemon.py"):
+            c = Path(env) / sub
+            if c.exists():
+                return c
 
-    # Search from this file's repo root
+    # 2. Check saved persistent config
+    cfg = read_saved_config()
+    cfg_script = cfg.get("daemon_script")
+    if cfg_script and Path(cfg_script).exists():
+        return Path(cfg_script)
+
+    cfg_root = cfg.get("repo_root")
+    if cfg_root:
+        for sub in ("daemon/moge_daemon.py", "moge_daemon.py"):
+            c = Path(cfg_root) / sub
+            if c.exists():
+                return c
+
+    # 3. Search upward from this file's repo root
     here = Path(__file__).resolve()
     for parent in (here,) + tuple(here.parents):
         cand = parent / "daemon" / "moge_daemon.py"
@@ -123,12 +191,26 @@ def _find_daemon_script() -> Path:
         if cand_sub.exists():
             return cand_sub
 
-    # Current working directory checkouts
-    for cand in [Path.cwd() / "daemon" / "moge_daemon.py", Path.cwd() / "moge_daemon.py"]:
-        if cand.exists():
-            return cand
+    # 4. Search common workspace paths and current working directory
+    user_docs = Path.home() / "Documents"
+    candidate_dirs = [
+        Path.cwd(),
+        Path.cwd() / "daemon",
+        Path.home() / "mode-3d",
+        Path.home() / "MoGe",
+        user_docs / "mode-3d",
+        user_docs / "MoGe",
+    ]
+    for d in candidate_dirs:
+        for script_name in ("daemon/moge_daemon.py", "moge_daemon.py"):
+            c = d / script_name
+            if c.exists():
+                return c
 
-    raise FileNotFoundError("Could not locate moge_daemon.py. Please set MOGE_HOME environment variable.")
+    raise FileNotFoundError(
+        "Could not locate 'moge_daemon.py'. "
+        "Please run 'Start_MoDe_3D.bat' in your downloaded MoDe 3D folder once to register the engine."
+    )
 
 
 def resolve_daemon_python(props=None) -> Path:
@@ -151,33 +233,56 @@ def resolve_daemon_python(props=None) -> Path:
     if env and Path(env).exists():
         return Path(env)
 
-    # 4. Search local repo .venv and user workspaces
+    # 4. Check saved persistent config from one-click setup
+    cfg = read_saved_config()
+    cfg_py = cfg.get("python_bin")
+    if cfg_py and Path(cfg_py).exists():
+        return Path(cfg_py)
+
+    cfg_root = cfg.get("repo_root")
+    if cfg_root:
+        if sys.platform == "win32":
+            cand_py = Path(cfg_root) / ".venv" / "Scripts" / "python.exe"
+        else:
+            cand_py = Path(cfg_root) / ".venv" / "bin" / "python"
+        if cand_py.exists():
+            return cand_py
+
+    # 5. Search local repo .venv and user workspaces (decoupled from _find_daemon_script)
+    venv_candidates = []
     try:
         daemon_script = _find_daemon_script()
         repo_root = daemon_script.parent.parent
-        user_docs = Path.home() / "Documents"
-        venv_candidates = [
+        venv_candidates.extend([
             repo_root / ".venv",
             repo_root.parent / ".venv",
             repo_root.parent / "MoGe" / ".venv",
-            Path.home() / ".venv",
-            Path.home() / "MoGe" / ".venv",
-            user_docs / "MoGe" / ".venv",
-        ]
-        for venv in venv_candidates:
-            if sys.platform == "win32":
-                py = venv / "Scripts" / "python.exe"
-            else:
-                py = venv / "bin" / "python"
-            if py.exists():
-                return py
+        ])
     except Exception:
         pass
 
+    user_docs = Path.home() / "Documents"
+    venv_candidates.extend([
+        Path.home() / ".venv",
+        Path.home() / "mode-3d" / ".venv",
+        Path.home() / "MoGe" / ".venv",
+        user_docs / "mode-3d" / ".venv",
+        user_docs / "MoGe" / ".venv",
+    ])
+
+    for venv in venv_candidates:
+        if sys.platform == "win32":
+            py = venv / "Scripts" / "python.exe"
+        else:
+            py = venv / "bin" / "python"
+        if py.exists():
+            return py
+
     # Never silently fall back to Blender's bundled Python (it lacks PyTorch/cv2)
     raise FileNotFoundError(
-        "Could not automatically locate a Python environment with PyTorch and MoGe. "
-        "Please set your Python path in MoGe Addon Preferences (e.g. your MoGe .venv/Scripts/python.exe)."
+        "MoDe 3D AI Engine is not configured.\n"
+        "Please run 'Start_MoDe_3D.bat' in your downloaded MoDe 3D folder once to set up the engine automatically, "
+        "or set your Python path in Addon Preferences."
     )
 
 
@@ -201,27 +306,38 @@ def daemon_health() -> tuple[str, any]:
     return "error", f"HTTP {status}: {data[:200]!r}"
 
 
-def daemon_start(py: Path) -> int:
+def daemon_start(py: Path, variant: str = "vitl") -> int:
     """Spawn daemon as detached background process."""
     script = _find_daemon_script()
     host, port = get_daemon_endpoint()
 
     log_path = _daemon_log_path()
+    cmd = [
+        str(py), str(script),
+        "--host", host,
+        "--port", str(port),
+        "--preload", "v3",
+        "--variant", str(variant or "vitl"),
+    ]
+
     log_f = open(log_path, "ab")
-    cmd = [str(py), str(script), "--host", host, "--port", str(port), "--preload", "v3"]
+    try:
+        kwargs = {
+            "stdout": log_f,
+            "stderr": subprocess.STDOUT,
+            "cwd": str(script.parent),
+            "close_fds": True,
+        }
+        if os.name == "nt":
+            # DETACHED_PROCESS (0x08) | CREATE_NEW_PROCESS_GROUP (0x200) | CREATE_NO_WINDOW (0x08000000)
+            kwargs["creationflags"] = 0x00000008 | 0x00000200 | 0x08000000
+        else:
+            kwargs["start_new_session"] = True
 
-    kwargs = {
-        "stdout": log_f,
-        "stderr": subprocess.STDOUT,
-        "cwd": str(script.parent),
-        "close_fds": True,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = 0x00000008 | 0x00000200  # DETACHED_PROCESS | NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **kwargs)
+    finally:
+        log_f.close()
 
-    proc = subprocess.Popen(cmd, **kwargs)
     try:
         _daemon_pid_path().write_text(str(proc.pid))
     except Exception:
@@ -349,7 +465,8 @@ def ensure_daemon_ready(props=None, autostart: bool = True) -> tuple[bool, str]:
 
     try:
         py = resolve_daemon_python(props)
-        pid = daemon_start(py)
+        variant = getattr(props, "model_variant", "vitl") if props else "vitl"
+        pid = daemon_start(py, variant=variant)
     except Exception as e:
         return False, f"Auto-start failed: {e}"
 

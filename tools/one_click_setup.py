@@ -210,6 +210,15 @@ def check_and_install_dependencies():
             req_missing = True
 
     if req_missing:
+        # requirements.txt installs two deps straight from git (flex-gemm, utils3d_moge),
+        # so git must exist before pip runs — otherwise pip dies with a cryptic error.
+        if shutil.which("git") is None:
+            print("[ERROR] Git is required (two AI packages install directly from GitHub) but was not found.",
+                  file=sys.stderr)
+            print("        Install it from https://git-scm.com/downloads/win, restart this window,",
+                  file=sys.stderr)
+            print("        then double-click Start_MoDe_3D.bat again.", file=sys.stderr)
+            sys.exit(1)
         cmd = [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)]
         run_cmd(cmd, "Installing requirements.txt packages")
     else:

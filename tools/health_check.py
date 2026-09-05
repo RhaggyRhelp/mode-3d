@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DAEMON_PORT = 8766
+REQUIREMENTS_FILE = ROOT / "requirements.txt"
 
 
 def print_banner(text: str):
@@ -88,6 +89,94 @@ def check_codebase_hygiene():
         assert False, "Etiquette violation: hardcoded paths detected in codebase."
     else:
         print("  [OK] Zero hardcoded machine paths found. Codebase is 100% portable.")
+
+
+def _parse_requirement_line(line: str):
+    """Split a requirements.txt line into (kind, display, bare, url, ref). Skips comments/options."""
+    import re
+    line = line.strip()
+    if not line or line.startswith("#") or line.startswith("-"):
+        return None
+    if "git+" in line:
+        name, _, url = line.partition("@")
+        url = url.strip()
+        if url.startswith("git+"):
+            url = url[len("git+"):]
+        ref = None
+        scheme_split = url.split("://", 1)
+        if len(scheme_split) == 2 and "@" in scheme_split[1]:
+            base, _, ref = scheme_split[1].rpartition("@")
+            url = scheme_split[0] + "://" + base
+        return ("git", line, name.strip(), url, (ref or "").strip() or None)
+    bare = re.split(r"[<>=!~\s\[]", line, 1)[0].strip()
+    return ("pypi", line, bare, None, None)
+
+
+def check_requirements_resolvable():
+    """TIER 2b: every requirements.txt line must resolve WITHOUT installing anything.
+
+    Catches the exact class that broke a fresh user before: a PyPI name that does not
+    exist (was: bare 'flex-gemm') or a git pin pointing at a dead repo/ref.
+    Uses `git ls-remote` for git URLs and `pip index versions` for PyPI (network only).
+    """
+    print_banner("TIER 2b: Requirements Resolvability (no-install dry run)")
+    if not REQUIREMENTS_FILE.exists():
+        print(f"  [FAIL] Missing {REQUIREMENTS_FILE}")
+        sys.exit(1)
+
+    lines = REQUIREMENTS_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+    reqs = [r for line in lines for r in ([_parse_requirement_line(line)] if _parse_requirement_line(line) else [])]
+    if not reqs:
+        print("  [FAIL] requirements.txt parsed to zero entries.")
+        sys.exit(1)
+
+    failures = []
+    for kind, display, bare, url, ref in reqs:
+        if kind == "git":
+            if shutil.which("git") is None:
+                print(f"  [FAIL] {display}: git URL needs git installed ({url})")
+                failures.append(bare)
+                continue
+            try:
+                import re as _re
+                # ls-remote <url> <pattern> matches ref NAMES only: a pinned commit SHA
+                # always returns exit 0 with empty output, even when valid. So for full
+                # SHAs, fetch the whole advertisement and check the object is advertised.
+                is_sha = bool(ref and _re.fullmatch(r"[0-9a-f]{40}", ref))
+                proc = subprocess.run(["git", "ls-remote", url] + ([] if is_sha else [ref or "HEAD"]),
+                                      capture_output=True, text=True, timeout=30)
+                ok = proc.returncode == 0 and (ref in proc.stdout if is_sha else bool(proc.stdout.strip()))
+                if ok:
+                    print(f"  [OK] {display}")
+                else:
+                    err = (proc.stderr or "").strip().splitlines()
+                    hint = err[-1][:120] if err else f"exit {proc.returncode}, pin not advertised"
+                    print(f"  [FAIL] {display}: cannot reach {url}@{ref} ({hint})")
+                    failures.append(bare)
+            except Exception as e:
+                print(f"  [FAIL] {display}: ls-remote error: {e}")
+                failures.append(bare)
+        else:
+            try:
+                # pip index wants a bare name, not a specifier (specifiers error out).
+                proc = subprocess.run([sys.executable, "-m", "pip", "index", "versions", bare],
+                                      capture_output=True, text=True, timeout=60)
+                if proc.returncode == 0:
+                    print(f"  [OK] {display}")
+                else:
+                    tail = (proc.stderr or proc.stdout or "").strip().splitlines()
+                    hint = tail[-1][:120] if tail else f"exit {proc.returncode}"
+                    print(f"  [FAIL] {display}: not resolvable on PyPI ({hint})")
+                    failures.append(bare)
+            except Exception as e:
+                print(f"  [FAIL] {display}: pip index error: {e}")
+                failures.append(bare)
+
+    if failures:
+        print(f"\n  [FAIL] {len(failures)} unresolvable requirement(s): {', '.join(failures)}")
+        print("         Fresh installs die here — fix requirements.txt before tagging.")
+        sys.exit(1)
+    print(f"\n  [OK] All {len(reqs)} requirements resolve (nothing installed).")
 
 
 def check_daemon_live():
@@ -172,6 +261,7 @@ def main():
 
     check_environment()
     check_codebase_hygiene()
+    check_requirements_resolvable()
     check_daemon_live()
     check_blender_headless()
 

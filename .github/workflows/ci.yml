@@ -27,6 +27,9 @@ jobs:
           tools/health_check.py
       - name: Pure-numpy unit tests (no GPU, no torch)
         run: python -m pytest tests/test_protocol.py tests/test_push.py -q
+      - name: Hygiene + requirements resolvability (fails on unresolvable deps)
+        # Tier 1/3/4 degrade to warnings without GPU/daemon/Blender; Tier 2/2b exit non-zero.
+        run: python tools/health_check.py
       - name: Blender extension validate (if Blender installed)
         run: |
           if command -v blender >/dev/null 2>&1; then
